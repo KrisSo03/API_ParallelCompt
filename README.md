@@ -1,134 +1,134 @@
-# Renewable Energy Atlas - Hybrid Solar-Eolic for Central America
+# Atlas de Energía Renovable - Híbrido Solar-Eólico para Centroamérica
 
-Production-ready prototype for parallel processing of climate data to create renewable energy potential atlas for Central America.
+Prototipo listo para producción para el procesamiento paralelo de datos climáticos, con el fin de crear un atlas de potencial de energía renovable para Centroamérica.
 
-## Project Overview
+## Descripción General del Proyecto
 
-This project processes NASA POWER climate data for ~300 geographic points across Central America, calculates renewable energy indicators (solar, wind, hybrid), applies K-Means clustering for spatial analysis, and benchmarks parallel processing performance using Dask.
+Este proyecto procesa datos climáticos de NASA POWER para ~300 puntos geográficos en Centroamérica, calcula indicadores de energía renovable (solar, eólica, híbrida), aplica clustering K-Means para análisis espacial, y evalúa el rendimiento del procesamiento paralelo usando Dask.
 
-## Architecture
+## Arquitectura
 
-### Layered Design (Domain-Driven Design)
+### Diseño por Capas (Domain-Driven Design)
 
 ```
 ┌─────────────────────────────────────┐
-│     Presentation / CLI              │
+│     Presentación / CLI              │
 ├─────────────────────────────────────┤
-│     Application Layer               │
-│  (Services, Pipelines, Orchestration)
+│     Capa de Aplicación              │
+│  (Servicios, Pipelines, Orquestación)
 ├─────────────────────────────────────┤
-│     Infrastructure Layer            │
-│  (External integrations, persistence)
+│     Capa de Infraestructura         │
+│  (Integraciones externas, persistencia)
 ├─────────────────────────────────────┤
-│     Domain Layer                    │
-│  (Models, Interfaces, Business logic)
+│     Capa de Dominio                 │
+│  (Modelos, Interfaces, Lógica de negocio)
 └─────────────────────────────────────┘
 ```
 
-### SOLID Principles Applied
+### Principios SOLID Aplicados
 
-- **S**ingle Responsibility: Each service has one job (validation, transformation, clustering, etc.)
-- **O**pen/Closed: New processing strategies can be added without modifying existing code
-- **L**iskov Substitution: All ProcessingStrategy implementations are interchangeable
-- **I**nterface Segregation: Interfaces are focused (ClimateDataSource, DataRepository, etc.)
-- **D**ependency Inversion: Composition root wires concrete implementations to abstractions
+- **S**ingle Responsibility (Responsabilidad Única): Cada servicio tiene una sola función (validación, transformación, clustering, etc.)
+- **O**pen/Closed (Abierto/Cerrado): Se pueden agregar nuevas estrategias de procesamiento sin modificar el código existente
+- **L**iskov Substitution (Sustitución de Liskov): Todas las implementaciones de ProcessingStrategy son intercambiables
+- **I**nterface Segregation (Segregación de Interfaces): Las interfaces son específicas (ClimateDataSource, DataRepository, etc.)
+- **D**ependency Inversion (Inversión de Dependencias): La composition root conecta implementaciones concretas con abstracciones
 
-## Key Features
+## Características Principales
 
-### Data Pipeline
-- **NASA POWER Client**: HTTP client with retry logic, timeout handling, error resilience
-- **Data Validation**: Completeness checks, range validation, anomaly detection
-- **Data Transformation**: Outlier removal, interpolation, normalization
-- **Indicator Calculation**: Solar Potential Index, Wind Potential Index, hybrid scoring
+### Pipeline de Datos
+- **Cliente NASA POWER**: Cliente HTTP con lógica de reintentos, manejo de timeouts y resiliencia ante errores
+- **Validación de Datos**: Verificación de completitud, validación de rangos, detección de anomalías
+- **Transformación de Datos**: Eliminación de outliers, interpolación, normalización
+- **Cálculo de Indicadores**: Índice de Potencial Solar, Índice de Potencial Eólico, puntuación híbrida
 
-### Processing Strategies
-- **Sequential Baseline**: Single-threaded for comparison
-- **Dask Parallel**: Multi-worker parallelization (1, 2, 4, 8 workers configurable)
-- **Benchmarking**: Execution time, speedup, efficiency, memory usage tracking
+### Estrategias de Procesamiento
+- **Línea Base Secuencial**: Procesamiento de un solo hilo para comparación
+- **Paralelo con Dask**: Paralelización multi-worker (1, 2, 4, 8 workers configurables)
+- **Benchmarking**: Medición de tiempo de ejecución, speedup, eficiencia y uso de memoria
 
-### Clustering & Analysis
-- **K-Means Clustering**: Optimal cluster determination with silhouette validation
-- **Cluster Interpretation**: Domain-specific labeling (Solar-dominant, Wind-dominant, Hybrid-high, Lower-resource)
-- **Spatial Analysis**: Country-level and regional pattern identification
+### Clustering y Análisis
+- **Clustering K-Means**: Determinación óptima de clusters con validación por silhouette
+- **Interpretación de Clusters**: Etiquetado específico del dominio (Dominante-solar, Dominante-eólico, Híbrido-alto, Recurso-bajo)
+- **Análisis Espacial**: Identificación de patrones a nivel de país y regionales
 
-### Configuration
-- Environment-based settings via pydantic-settings
-- Hierarchical configuration (NasaPower, Grid, Scoring, Clustering, Benchmark, Paths)
-- Full externalization for HPC/supercomputer compatibility
+### Configuración
+- Configuración basada en variables de entorno mediante pydantic-settings
+- Configuración jerárquica (NasaPower, Grid, Scoring, Clustering, Benchmark, Paths)
+- Totalmente externalizable para compatibilidad con HPC/supercomputadoras
 
-## Installation
+## Instalación
 
-### Requirements
+### Requisitos
 - Python 3.10+
-- pip or conda
+- pip o conda
 
-### Steps
+### Pasos
 
 ```bash
-# Clone repository
+# Clonar el repositorio
 git clone https://github.com/krisso03/api_parallelcompt.git
 cd Proyecto_Paralela
 
-# Create virtual environment
+# Crear entorno virtual
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # En Windows: venv\Scripts\activate
 
-# Install dependencies
+# Instalar dependencias
 pip install -e ".[dev]"
 
-# Copy environment template
+# Copiar plantilla de entorno
 cp .env.example .env
 
-# Edit .env with your settings (optional)
+# Editar .env con tu configuración (opcional)
 ```
 
-## Usage
+## Uso
 
-### Run Complete Pipeline
+### Ejecutar el Pipeline Completo
 
 ```bash
 python main.py run-all
 ```
 
-This will:
-1. Download climate data from NASA POWER (or use fake data for offline testing)
-2. Clean and validate data
-3. Calculate renewable energy indicators
-4. Run K-Means clustering
-5. Generate cluster profiles with domain-specific labels
+Esto realizará lo siguiente:
+1. Descargar datos climáticos de NASA POWER (o usar datos simulados para pruebas sin conexión)
+2. Limpiar y validar los datos
+3. Calcular indicadores de energía renovable
+4. Ejecutar clustering K-Means
+5. Generar perfiles de clusters con etiquetas específicas del dominio
 
-### Run Benchmarking
+### Ejecutar Benchmarking
 
 ```bash
 python main.py benchmark
 ```
 
-Compares sequential vs parallel execution with 1, 2, 4, 8 workers. Outputs:
-- Execution time per configuration
-- Speedup metrics
-- Efficiency percentage
-- Memory usage
+Compara la ejecución secuencial contra la paralela con 1, 2, 4 y 8 workers. Genera:
+- Tiempo de ejecución por configuración
+- Métricas de speedup
+- Porcentaje de eficiencia
+- Uso de memoria
 
-### Run Individual Stages
+### Ejecutar Etapas Individuales
 
 ```bash
-python main.py download  # Data acquisition
-python main.py process   # Cleaning & transformation
-python main.py cluster   # K-Means analysis
+python main.py download  # Adquisición de datos
+python main.py process   # Limpieza y transformación
+python main.py cluster   # Análisis K-Means
 ```
 
-## Configuration
+## Configuración
 
-Edit `.env` file to customize:
+Edita el archivo `.env` para personalizar:
 
 ```bash
-# NASA POWER API
+# API de NASA POWER
 NASA_POWER_BASE_URL=https://power.larc.nasa.gov/api/v1/
 NASA_POWER_TIMEOUT_SECONDS=30
 NASA_POWER_MAX_RETRIES=3
 
-# Grid Configuration
-GRID_SIZE=20              # Points per country
+# Configuración de la Grilla
+GRID_SIZE=20              # Puntos por país
 GRID_ENABLE_SAMPLING=true
 GRID_SAMPLE_SIZE=20
 
@@ -140,155 +140,155 @@ CLUSTERING_RANDOM_STATE=42
 BENCHMARK_WORKER_COUNTS=1,2,4,8
 BENCHMARK_REPEATS_PER_CONFIG=3
 
-# Output Paths
+# Rutas de Salida
 PATH_DATA_DIR=./data
 PATH_RESULTS_DIR=./results
 ```
 
-## Performance
+## Rendimiento
 
-Tested at scale:
-- **20 points × 2-year**: ~2.3 seconds sequential
-- **300 points × 1-year**: ~3.5 seconds sequential
-- **Speedup (4 workers)**: 3.2x typical
-- **Efficiency (4 workers)**: 80% typical
+Probado a escala:
+- **20 puntos × 2 años**: ~2.3 segundos en modo secuencial
+- **300 puntos × 1 año**: ~3.5 segundos en modo secuencial
+- **Speedup (4 workers)**: 3.2x típico
+- **Eficiencia (4 workers)**: 80% típico
 
-## Testing
+## Pruebas
 
 ```bash
-# Run all tests
+# Ejecutar todas las pruebas
 pytest
 
-# Run with coverage
+# Ejecutar con cobertura
 pytest --cov=src
 
-# Run specific test module
+# Ejecutar un módulo de pruebas específico
 pytest tests/unit/test_domain_models.py
 ```
 
-## Code Quality
+## Calidad de Código
 
 ```bash
-# Type checking
+# Verificación de tipos
 mypy src/
 
 # Linting
 ruff check src/
 
-# Formatting
+# Formateo
 black src/ --check
 ```
 
-## Project Structure
+## Estructura del Proyecto
 
 ```
 Proyecto_Paralela/
 ├── src/renewable_atlas/
-│   ├── domain/              # Core models and interfaces
+│   ├── domain/              # Modelos e interfaces principales
 │   │   ├── models/          # GridPoint, ClimateObservation, RenewableIndicators
-│   │   └── interfaces/      # Abstract bases (ClimateDataSource, DataRepository, etc.)
-│   ├── infrastructure/      # Implementations
-│   │   ├── nasa_power/      # NASA POWER API client
-│   │   ├── persistence/     # Parquet repository
-│   │   ├── processing/      # Sequential and Dask processors
-│   │   ├── clustering/      # K-Means strategy
-│   │   ├── benchmarking/    # Performance measurement
-│   │   └── grid/            # Geographic grid provider
-│   ├── application/         # Business logic
-│   │   ├── services/        # Data validation, transformation, clustering
-│   │   └── pipelines/       # Atlas pipeline orchestration
-│   ├── composition/         # Dependency injection container
-│   ├── config/              # Configuration management
-│   └── cli.py               # Command-line interface
+│   │   └── interfaces/      # Clases base abstractas (ClimateDataSource, DataRepository, etc.)
+│   ├── infrastructure/      # Implementaciones
+│   │   ├── nasa_power/      # Cliente de la API NASA POWER
+│   │   ├── persistence/     # Repositorio Parquet
+│   │   ├── processing/      # Procesadores secuencial y Dask
+│   │   ├── clustering/      # Estrategia K-Means
+│   │   ├── benchmarking/    # Medición de rendimiento
+│   │   └── grid/            # Proveedor de grilla geográfica
+│   ├── application/         # Lógica de negocio
+│   │   ├── services/        # Validación, transformación y clustering de datos
+│   │   └── pipelines/       # Orquestación del pipeline del atlas
+│   ├── composition/         # Contenedor de inyección de dependencias
+│   ├── config/              # Gestión de configuración
+│   └── cli.py               # Interfaz de línea de comandos
 ├── tests/
-│   ├── unit/                # Unit tests (no external I/O)
-│   └── integration/         # Integration tests (with mocks)
+│   ├── unit/                # Pruebas unitarias (sin I/O externo)
+│   └── integration/         # Pruebas de integración (con mocks)
 ├── docs/
-│   └── decisions/           # Architecture Decision Records (ADRs)
-├── scripts/                 # Utility scripts
-├── pyproject.toml           # Project metadata and dependencies
-├── .env.example             # Configuration template
-└── README.md                # This file
+│   └── decisions/           # Registros de Decisiones de Arquitectura (ADRs)
+├── scripts/                 # Scripts de utilidad
+├── pyproject.toml           # Metadatos y dependencias del proyecto
+├── .env.example             # Plantilla de configuración
+└── README.md                # Este archivo
 ```
 
-## NASA POWER API Integration
+## Integración con la API de NASA POWER
 
-### Available Variables
-- `SW_DWN`: Surface downward shortwave flux (W/m²)
-- `DNI`: Direct Normal Irradiance (W/m²)
-- `WS50M`: Wind speed at 50m (m/s)
-- `WS100M`: Wind speed at 100m (m/s)
+### Variables Disponibles
+- `SW_DWN`: Flujo de onda corta descendente en superficie (W/m²)
+- `DNI`: Irradiancia Normal Directa (W/m²)
+- `WS50M`: Velocidad del viento a 50m (m/s)
+- `WS100M`: Velocidad del viento a 100m (m/s)
 
-### Data Quality
-- Completeness target: ≥85% valid values per point
-- Fill value handling: -999 → None
-- Range validation applied during preprocessing
+### Calidad de Datos
+- Objetivo de completitud: ≥85% de valores válidos por punto
+- Manejo de valores de relleno: -999 → None
+- Validación de rangos aplicada durante el preprocesamiento
 
-## Methodology
+## Metodología
 
-### Renewable Energy Scoring
-Min-max normalization across the sample:
-- **Solar Score**: (SW_DWN - min) / (max - min)
-- **Wind Score**: (WS100M - min) / (max - min)
-- **Hybrid Score**: 0.5×Solar + 0.3×Wind + 0.2×(Solar×Wind)
+### Puntuación de Energía Renovable
+Normalización min-max sobre la muestra:
+- **Puntuación Solar**: (SW_DWN - min) / (max - min)
+- **Puntuación Eólica**: (WS100M - min) / (max - min)
+- **Puntuación Híbrida**: 0.5×Solar + 0.3×Eólica + 0.2×(Solar×Eólica)
 
-### Clustering Validation
-- Silhouette coefficient ≥ 0.5 for cluster quality
-- Davies-Bouldin index < 2.0 for cluster separation
-- 10+ re-runs with Adjusted Rand Index ≥ 0.95 for stability
+### Validación de Clustering
+- Coeficiente de silhouette ≥ 0.5 para calidad de cluster
+- Índice de Davies-Bouldin < 2.0 para separación de clusters
+- 10+ re-ejecuciones con Índice de Rand Ajustado ≥ 0.95 para estabilidad
 
-### Parallel Processing
-- Baseline: Sequential processing (worker_count=1)
-- Speedup = T_sequential / T_parallel
-- Efficiency = (Speedup / NumWorkers) × 100%
+### Procesamiento Paralelo
+- Línea base: procesamiento secuencial (worker_count=1)
+- Speedup = T_secuencial / T_paralelo
+- Eficiencia = (Speedup / NúmeroDeWorkers) × 100%
 
-## Limitations & Future Work
+## Limitaciones y Trabajo Futuro
 
-### Current Limitations
-- NASA POWER data limited to gridded approximations (~111 km resolution)
-- Clustering validation requires real project data (not available)
-- No temporal trend analysis (Mann-Kendall test recommended)
+### Limitaciones Actuales
+- Los datos de NASA POWER están limitados a aproximaciones en grilla (~111 km de resolución)
+- La validación del clustering requiere datos reales de proyectos (no disponibles)
+- No hay análisis de tendencias temporales (se recomienda la prueba de Mann-Kendall)
 
-### Future Enhancements
-- Interactive Plotly Dash dashboard with 6-view system
-- Export to GeoTIFF/NetCDF for GIS integration
-- Validate against real project performance data
-- Uncertainty quantification via ensemble methods
-- Seasonal analysis and sub-annual patterns
+### Mejoras Futuras
+- Dashboard interactivo con Plotly Dash con sistema de 6 vistas
+- Exportación a GeoTIFF/NetCDF para integración con SIG
+- Validación contra datos reales de rendimiento de proyectos
+- Cuantificación de incertidumbre mediante métodos de conjunto (ensemble)
+- Análisis estacional y de patrones sub-anuales
 
-## HPC Migration
+## Migración a HPC
 
-This codebase is designed for supercomputer deployment:
+Este código está diseñado para despliegue en supercomputadoras:
 
-### Portable Elements
-- Configuration via environment variables
-- No hardcoded file paths
-- Dask scheduler abstraction (local/distributed)
-- Dependency injection enables mock/real swapping
+### Elementos Portables
+- Configuración mediante variables de entorno
+- Sin rutas de archivo codificadas de forma fija
+- Abstracción del scheduler de Dask (local/distribuido)
+- La inyección de dependencias permite intercambiar entre mocks y componentes reales
 
-### HPC Deployment
+### Despliegue en HPC
 ```bash
-# Submit SLURM job
+# Enviar trabajo SLURM
 sbatch config/job_template.slurm
 
-# Distributed Dask scheduler
+# Scheduler distribuido de Dask
 dask-scheduler
 dask-worker tcp://localhost:8786
 ```
 
-## Contributing
+## Contribuciones
 
-1. Create a feature branch (`git checkout -b feature/your-feature`)
-2. Make changes following SOLID principles
-3. Add unit tests for new functionality
-4. Run full test suite: `pytest`
-5. Commit with atomic, descriptive messages
-6. Push and create pull request
+1. Crea una rama de funcionalidad (`git checkout -b feature/tu-funcionalidad`)
+2. Realiza cambios siguiendo los principios SOLID
+3. Agrega pruebas unitarias para la nueva funcionalidad
+4. Ejecuta la suite completa de pruebas: `pytest`
+5. Haz commits atómicos y descriptivos
+6. Haz push y crea un pull request
 
-## License
+## Licencia
 
 MIT
 
-## Contact
+## Contacto
 
 claude@anthropic.com
