@@ -1,0 +1,2 @@
+class NASAPowerException(Exception):
+    pass
