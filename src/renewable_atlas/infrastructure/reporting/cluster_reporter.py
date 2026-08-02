@@ -33,26 +33,42 @@ class ClusterReporter:
         )
         profiles_df.to_csv(path, index=False)
 
+    def save_summary(self, output_dir: str) -> None:
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        summary_df = (
+            self.indicators_df.groupby("cluster_id")
+            .agg(
+                points=("point_id", "count"),
+                solar_mean=("solar_score", "mean"),
+                wind_mean=("wind_score", "mean"),
+                hybrid_mean=("hybrid_score", "mean"),
+            )
+            .reset_index()
+        )
+        summary_df.to_csv(output_path / "cluster_summary.csv", index=False)
+
     def save_plots(self, output_dir: str) -> None:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-        self.indicators_df.groupby("cluster_id")["sw_dwn_mean"].mean().plot(
+        self.indicators_df.groupby("cluster_id")["solar_score"].mean().plot(
             kind="bar", ax=axes[0]
         )
-        axes[0].set_title("Promedio SW_DWN por cluster")
+        axes[0].set_title("Puntaje solar promedio por cluster")
         axes[0].set_xlabel("Cluster")
-        axes[0].set_ylabel("SW_DWN medio")
+        axes[0].set_ylabel("Solar")
         axes[0].grid(True)
 
-        self.indicators_df.groupby("cluster_id")["ws_100m_mean"].mean().plot(
+        self.indicators_df.groupby("cluster_id")["wind_score"].mean().plot(
             kind="bar", ax=axes[1]
         )
-        axes[1].set_title("Promedio WS_100M por cluster")
+        axes[1].set_title("Puntaje eólico promedio por cluster")
         axes[1].set_xlabel("Cluster")
-        axes[1].set_ylabel("WS_100M medio")
+        axes[1].set_ylabel("Eólico")
         axes[1].grid(True)
 
         plt.tight_layout()

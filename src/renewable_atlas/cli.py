@@ -20,7 +20,12 @@ def main():
     parser = argparse.ArgumentParser(description="Renewable Energy Atlas Generator")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    subparsers.add_parser("download", help="Download climate data from NASA POWER")
+    download_parser = subparsers.add_parser("download", help="Download climate data from NASA POWER")
+    download_parser.add_argument(
+        "--use-fake",
+        action="store_true",
+        help="Use fake climate data instead of NASA POWER",
+    )
 
     process_parser = subparsers.add_parser("process", help="Process and clean climate data")
     process_parser.add_argument(
@@ -28,6 +33,11 @@ def main():
         type=int,
         default=1,
         help="Number of workers to use for processing (1 = sequential, >1 = Dask)",
+    )
+    process_parser.add_argument(
+        "--use-fake",
+        action="store_true",
+        help="Use fake climate data instead of NASA POWER",
     )
 
     cluster_parser = subparsers.add_parser("cluster", help="Run K-Means clustering analysis")
@@ -37,8 +47,18 @@ def main():
         default=1,
         help="Number of workers to use for processing before clustering",
     )
+    cluster_parser.add_argument(
+        "--use-fake",
+        action="store_true",
+        help="Use fake climate data instead of NASA POWER",
+    )
 
     benchmark_parser = subparsers.add_parser("benchmark", help="Run parallel benchmarking")
+    benchmark_parser.add_argument(
+        "--use-fake",
+        action="store_true",
+        help="Use fake climate data instead of NASA POWER",
+    )
 
     run_all_parser = subparsers.add_parser("run-all", help="Run complete pipeline")
     run_all_parser.add_argument(
@@ -46,6 +66,11 @@ def main():
         type=int,
         default=1,
         help="Number of workers to use for processing (1 = sequential, >1 = Dask)",
+    )
+    run_all_parser.add_argument(
+        "--use-fake",
+        action="store_true",
+        help="Use fake climate data instead of NASA POWER",
     )
 
     args = parser.parse_args()
@@ -70,15 +95,17 @@ def main():
 
     logger.info(f"Generated {len(points)} grid points for analysis")
 
+    use_fake = getattr(args, "use_fake", False)
+
     if args.command == "download":
-        pipeline = container.build_atlas_pipeline(use_fake=True)
+        pipeline = container.build_atlas_pipeline(use_fake=use_fake)
         observations = pipeline.download(points)
         logger.info(
             f"Downloaded climate observations for {len(observations)} points and saved raw data to {settings.paths.data_dir}/raw_observations.parquet"
         )
 
     elif args.command == "process":
-        pipeline = container.build_atlas_pipeline(use_fake=True)
+        pipeline = container.build_atlas_pipeline(use_fake=use_fake)
         processor = build_processor(args.workers)
         observations = pipeline.download(points)
         indicators_df = pipeline.process(observations, processor)
@@ -87,7 +114,7 @@ def main():
         )
 
     elif args.command == "cluster":
-        pipeline = container.build_atlas_pipeline(use_fake=True)
+        pipeline = container.build_atlas_pipeline(use_fake=use_fake)
         processor = build_processor(args.workers)
         observations = pipeline.download(points)
         indicators_df = pipeline.process(observations, processor)
@@ -112,7 +139,7 @@ def main():
         logger.info(f"Saved cluster plots to {results_dir}")
 
     elif args.command == "run-all" or args.command is None:
-        pipeline = container.build_atlas_pipeline(use_fake=True)
+        pipeline = container.build_atlas_pipeline(use_fake=use_fake)
         processor = build_processor(args.workers)
         logger.info("Running complete pipeline...")
         indicators_df, labels, profiles = pipeline.run(points, processor)
@@ -129,6 +156,7 @@ def main():
         reporter.save_csv(csv_path)
         reporter.save_parquet(parquet_path)
         reporter.save_cluster_profiles(profile_path)
+        reporter.save_summary(results_dir)
         reporter.save_plots(results_dir)
 
         logger.info(f"Saved cluster indicators to {csv_path}")
@@ -136,7 +164,7 @@ def main():
         logger.info(f"Saved cluster plots to {results_dir}")
 
     elif args.command == "benchmark":
-        pipeline = container.build_atlas_pipeline(use_fake=True)
+        pipeline = container.build_atlas_pipeline(use_fake=use_fake)
         sample_size = min(10, len(points))
         sample_points = points[:sample_size]
 

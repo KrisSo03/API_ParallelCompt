@@ -14,16 +14,20 @@ class NasaPowerSettings(BaseSettings):
 
 
 class DateRangeSettings(BaseSettings):
-    start_year: int = Field(default=2020)
+    start_year: int = Field(default=2000)
     end_year: int = Field(default=2023)
 
     model_config = SettingsConfigDict(env_prefix="DATE_RANGE_", env_file=".env", extra="ignore")
 
+    def model_post_init(self, __context):
+        if self.start_year > self.end_year:
+            raise ValueError("DATE_RANGE_START_YEAR must be less than or equal to DATE_RANGE_END_YEAR")
+
 
 class GridSettings(BaseSettings):
-    size: int = Field(default=20)
+    size: int = Field(default=80)
     enable_sampling: bool = Field(default=True)
-    sample_size: int = Field(default=20)
+    sample_size: int = Field(default=80)
 
     model_config = SettingsConfigDict(env_prefix="GRID_", env_file=".env", extra="ignore")
 

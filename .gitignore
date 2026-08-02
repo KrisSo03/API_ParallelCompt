@@ -50,6 +50,7 @@ outputs/data_quality/
 *.parquet
 *.h5
 *.nc
+*.pdf
 
 # Environment
 .env
