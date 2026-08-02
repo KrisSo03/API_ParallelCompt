@@ -13,7 +13,20 @@ class KMeansClusteringStrategy(ClusteringStrategy):
         self.scaled_features: np.ndarray | None = None
 
     def fit_predict(self, features: np.ndarray) -> np.ndarray:
-        self.scaled_features = self.scaler.fit_transform(features)
+        feature_array = np.asarray(features, dtype=float)
+        if feature_array.ndim == 1:
+            feature_array = feature_array.reshape(-1, 1)
+
+        imputed_features = feature_array.copy()
+        for col_idx in range(imputed_features.shape[1]):
+            values = imputed_features[:, col_idx]
+            if np.isnan(values).all():
+                values[:] = 0.0
+            else:
+                median_value = float(np.nanmedian(values[~np.isnan(values)]))
+                values[np.isnan(values)] = median_value
+
+        self.scaled_features = self.scaler.fit_transform(imputed_features)
         self.kmeans = KMeans(n_clusters=self.n_clusters, random_state=self.random_state)
         labels = self.kmeans.fit_predict(self.scaled_features)
         return labels

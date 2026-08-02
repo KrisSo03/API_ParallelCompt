@@ -31,7 +31,11 @@ class AtlasPipeline:
         raw_rows = []
 
         for point_id, point in enumerate(points):
-            observations = self.data_source.fetch_observations(point)
+            try:
+                observations = self.data_source.fetch_observations(point)
+            except Exception:
+                observations = []
+
             observations_by_point[point_id] = {
                 "point": point,
                 "observations": observations,

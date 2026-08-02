@@ -2,10 +2,24 @@ from datetime import datetime
 from renewable_atlas.domain import ClimateObservation
 
 VARIABLE_FIELD_MAP = {
-    "SW_DWN": "sw_dwn",
-    "DNI": "dni",
+    "ALLSKY_SFC_SW_DWN": "sw_dwn",
+    "ALLSKY_SFC_SW_DNI": "dni",
+    "ALLSKY_SFC_SW_DIFF": "sw_diff",
+    "CLRSKY_SFC_SW_DWN": "clr_sky_sw_dwn",
+    "ALLSKY_KT": "allsky_kt",
+    "WS10M": "ws_100m",
     "WS50M": "ws_50m",
-    "WS100M": "ws_100m",
+    "WD10M": "wd_100m",
+    "WD50M": "wd_50m",
+    "T2M": "t2m",
+    "T2M_MAX": "t2m_max",
+    "T2M_MIN": "t2m_min",
+    "T2MDEW": "t2mdew",
+    "PS": "ps",
+    "RH2M": "rh2m",
+    "QV2M": "qv2m",
+    "PRECTOTCORR": "prectotcorr",
+    "CLOUD_AMT": "cloud_amt",
 }
 
 FILL_VALUE = -999
@@ -14,45 +28,37 @@ FILL_VALUE = -999
 def parse_point_response(data: dict) -> list[ClimateObservation]:
     observations = []
     properties = data.get("properties", {})
-    daily_data = properties.get("daily", {})
+    parameter_data = properties.get("parameter", {})
 
-    if not daily_data:
+    if not parameter_data:
         return observations
 
-    dates = daily_data.get("YEAR", [])
-    sw_dwn_values = daily_data.get("SW_DWN", [])
-    dni_values = daily_data.get("DNI", [])
-    ws_50m_values = daily_data.get("WS50M", [])
-    ws_100m_values = daily_data.get("WS100M", [])
+    dates = sorted(parameter_data.get("ALLSKY_SFC_SW_DWN", {}).keys())
+    if not dates:
+        return observations
 
-    for i, (year, month, day) in enumerate(zip(
-        daily_data.get("YEAR", []),
-        daily_data.get("MO", []),
-        daily_data.get("DY", []),
-    )):
+    for date_key in dates:
         try:
+            year = int(date_key[:4])
+            month = int(date_key[4:6])
+            day = int(date_key[6:8])
             date = datetime(year, month, day).date()
 
-            sw_dwn = sw_dwn_values[i] if i < len(sw_dwn_values) else None
-            dni = dni_values[i] if i < len(dni_values) else None
-            ws_50m = ws_50m_values[i] if i < len(ws_50m_values) else None
-            ws_100m = ws_100m_values[i] if i < len(ws_100m_values) else None
-
-            sw_dwn = None if sw_dwn == FILL_VALUE else sw_dwn
-            dni = None if dni == FILL_VALUE else dni
-            ws_50m = None if ws_50m == FILL_VALUE else ws_50m
-            ws_100m = None if ws_100m == FILL_VALUE else ws_100m
+            values = {}
+            for variable, field_name in VARIABLE_FIELD_MAP.items():
+                raw_value = parameter_data.get(variable, {}).get(date_key)
+                values[field_name] = None if raw_value == FILL_VALUE else raw_value
 
             observation = ClimateObservation(
                 date=date,
-                sw_dwn=sw_dwn,
-                dni=dni,
-                ws_50m=ws_50m,
-                ws_100m=ws_100m,
+                sw_dwn=values.get("sw_dwn"),
+                dni=values.get("dni"),
+                ws_50m=values.get("ws_50m"),
+                ws_100m=values.get("ws_100m"),
             )
             observations.append(observation)
 
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, TypeError):
             continue
 
     return observations

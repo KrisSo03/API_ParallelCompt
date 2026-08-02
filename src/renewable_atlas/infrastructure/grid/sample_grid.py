@@ -28,10 +28,12 @@ class SampleGridProvider:
         self.enable_sampling = enable_sampling
         self.sample_size = sample_size
 
-    def generate(self) -> list[GridPoint]:
+    def generate(self, max_points: int | None = None) -> list[GridPoint]:
         points = self._generate_grid()
         if self.enable_sampling and len(points) > self.sample_size:
             points = self._evenly_spaced_subset(points, self.sample_size)
+        if max_points is not None:
+            points = points[:max_points]
         return points
 
     def _generate_grid(self) -> list[GridPoint]:

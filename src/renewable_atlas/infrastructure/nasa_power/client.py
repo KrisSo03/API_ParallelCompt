@@ -5,31 +5,41 @@ from renewable_atlas.domain import GridPoint, ClimateDataSource, ClimateObservat
 from .response_parser import parse_point_response
 from .exceptions import NASAPowerException
 
+DEFAULT_PARAMETERS = (
+    "ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,ALLSKY_SFC_SW_DIFF,CLRSKY_SFC_SW_DWN,"
+    "ALLSKY_KT,WS10M,WS50M,WD10M,WD50M,T2M,T2M_MAX,T2M_MIN,T2MDEW,PS,RH2M,QV2M,"
+    "PRECTOTCORR,CLOUD_AMT"
+)
+
 logger = logging.getLogger(__name__)
 
 
 class NASAPowerDataSource(ClimateDataSource):
-    def __init__(self, base_url: str, timeout: int = 30, max_retries: int = 3):
+    def __init__(self, base_url: str, timeout: int = 30, max_retries: int = 3, start_year: int = 2000, end_year: int = 2023):
         self.base_url = base_url
         self.timeout = timeout
         self.max_retries = max_retries
+        self.start_year = start_year
+        self.end_year = end_year
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def fetch_observations(self, point: GridPoint) -> list[ClimateObservation]:
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=self.timeout, proxy=None, trust_env=False) as client:
+                start_date = f"{self.start_year}0101"
+                end_date = f"{self.end_year}1231"
                 params = {
-                    "parameters": "SW_DWN,DNI,WS50M,WS100M",
-                    "community": "sb",
+                    "parameters": DEFAULT_PARAMETERS,
+                    "community": "RE",
                     "longitude": str(point.longitude),
                     "latitude": str(point.latitude),
-                    "start": "2000",
-                    "end": "2023",
-                    "format": "json",
+                    "start": start_date,
+                    "end": end_date,
+                    "format": "JSON",
                 }
 
                 response = client.get(
-                    f"{self.base_url}temporal/daily",
+                    "https://power.larc.nasa.gov/api/temporal/daily/point",
                     params=params,
                 )
                 response.raise_for_status()

@@ -28,6 +28,8 @@ class CompositionRoot:
             base_url=self.settings.nasa_power.base_url,
             timeout=self.settings.nasa_power.timeout_seconds,
             max_retries=self.settings.nasa_power.max_retries,
+            start_year=self.settings.date_range.start_year,
+            end_year=self.settings.date_range.end_year,
         )
 
     def build_data_repository(self) -> DataRepository:
