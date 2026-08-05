@@ -1,9 +1,10 @@
 import pytest
+
+from renewable_atlas.composition import CompositionRoot
+from renewable_atlas.config import Settings
 from renewable_atlas.domain import GridPoint
 from renewable_atlas.infrastructure import FakeClimateDataSource
 from renewable_atlas.infrastructure.grid import SampleGridProvider
-from renewable_atlas.composition import CompositionRoot
-from renewable_atlas.config import Settings
 
 
 class TestAtlasPipeline:
@@ -19,7 +20,7 @@ class TestAtlasPipeline:
         pipeline = container.build_atlas_pipeline(use_fake=True)
         processor = container.build_sequential_processor()
 
-        grid_provider = SampleGridProvider(size=3, enable_sampling=True, sample_size=3)
+        grid_provider = SampleGridProvider(size=4, enable_sampling=True, sample_size=4)
         points = grid_provider.generate()
 
         assert len(points) > 0
