@@ -23,6 +23,7 @@ dependencies = [
     "plotly>=5.16.0",
     "tenacity>=8.2.3",
     "python-dotenv>=1.0.0",
+    "psutil>=6.1.1",
 ]
 
 [project.optional-dependencies]
