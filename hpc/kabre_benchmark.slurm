@@ -11,6 +11,8 @@
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:?Envíe el trabajo desde la raíz del proyecto}"
+module purge
+module load mamba/python-3.12.11
 source .venv-kabre/bin/activate
 
 EXPERIMENT_ID="${EXPERIMENT_ID:-kabre-benchmark-${SLURM_JOB_ID}}"
