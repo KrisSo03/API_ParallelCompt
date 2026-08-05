@@ -1,15 +1,16 @@
 import pandas as pd
+
+from renewable_atlas.application.services import (
+    ClusteringService,
+    ClusterInterpretationService,
+    DataTransformer,
+    IndicatorCalculator,
+    ScoringService,
+)
 from renewable_atlas.domain import (
     ClimateDataSource,
     DataRepository,
     ProcessingStrategy,
-)
-from renewable_atlas.application.services import (
-    DataTransformer,
-    IndicatorCalculator,
-    ScoringService,
-    ClusteringService,
-    ClusterInterpretationService,
 )
 
 
@@ -26,7 +27,7 @@ class AtlasPipeline:
         self.clustering_service = clustering_service
         self.interpretation_service = interpretation_service
 
-    def download(self, points):
+    def download(self, points, persist: bool = True):
         observations_by_point = {}
         raw_rows = []
 
@@ -57,29 +58,18 @@ class AtlasPipeline:
                 )
 
         raw_df = pd.DataFrame(raw_rows)
-        self.repository.save(raw_df, "raw_observations")
+        if persist:
+            self.repository.save(raw_df, "raw_observations")
         return observations_by_point
 
-    def process(self, observations_by_point, processor: ProcessingStrategy):
-        def calculate_indicators(item):
-            point_id, payload = item
-            point = payload["point"]
-            observations = payload["observations"]
-
-            df = DataTransformer.to_dataframe(observations)
-            df = DataTransformer.clean(df)
-
-            calculator = IndicatorCalculator()
-            return calculator.calculate(
-                point_id,
-                point.latitude,
-                point.longitude,
-                point.country,
-                df,
-            )
-
+    def process(
+        self,
+        observations_by_point,
+        processor: ProcessingStrategy,
+        persist: bool = True,
+    ):
         items = list(observations_by_point.items())
-        indicators = processor.process(items, calculate_indicators)
+        indicators = processor.process(items, _calculate_indicators)
 
         indicators_df = pd.DataFrame(
             [
@@ -101,7 +91,8 @@ class AtlasPipeline:
         )
 
         scored_df = ScoringService().score(indicators_df)
-        self.repository.save(scored_df, "indicators")
+        if persist:
+            self.repository.save(scored_df, "indicators")
         return scored_df
 
     def cluster(self, indicators_df):
@@ -111,6 +102,27 @@ class AtlasPipeline:
 
     def run(self, points, processor: ProcessingStrategy):
         observations = self.download(points)
-        indicators_df = self.process(observations, processor)
+        return self.run_from_observations(observations, processor)
+
+    def run_from_observations(
+        self, observations, processor: ProcessingStrategy, persist: bool = True
+    ):
+        """Reuse one immutable input for comparable worker configurations."""
+        indicators_df = self.process(observations, processor, persist=persist)
         labels, profiles = self.cluster(indicators_df)
         return indicators_df, labels, profiles
+
+
+def _calculate_indicators(item):
+    """Top-level worker task, serializable by Dask's process scheduler."""
+    point_id, payload = item
+    point = payload["point"]
+    observations = payload["observations"]
+    df = DataTransformer.clean(DataTransformer.to_dataframe(observations))
+    return IndicatorCalculator().calculate(
+        point_id,
+        point.latitude,
+        point.longitude,
+        point.country,
+        df,
+    )

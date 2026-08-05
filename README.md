@@ -123,7 +123,7 @@ Edita el archivo `.env` para personalizar:
 
 ```bash
 # API de NASA POWER
-NASA_POWER_BASE_URL=https://power.larc.nasa.gov/api/v1/
+NASA_POWER_BASE_URL=https://power.larc.nasa.gov/api/
 NASA_POWER_TIMEOUT_SECONDS=30
 NASA_POWER_MAX_RETRIES=3
 
@@ -267,13 +267,19 @@ Este código está diseñado para despliegue en supercomputadoras:
 - La inyección de dependencias permite intercambiar entre mocks y componentes reales
 
 ### Despliegue en HPC
-```bash
-# Enviar trabajo SLURM
-sbatch config/job_template.slurm
 
-# Scheduler distribuido de Dask
-dask-scheduler
-dask-worker tcp://localhost:8786
+La guía completa de Kabré está disponible en [`docs/KABRE.md`](docs/KABRE.md).
+Incluye ambiente fijado, particiones Slurm, prueba debug, matriz de workers,
+monitoreo y organización reproducible de resultados.
+
+```bash
+# Preparar el ambiente (tarea ligera en login)
+bash hpc/bootstrap_kabre.sh "$PWD"
+mkdir -p outputs/slurm
+
+# Enviar el cálculo a Slurm; no ejecutar el pipeline en login
+EXPERIMENT_ID=kabre-carga-300 POINTS=300 REPEATS=3 \
+  sbatch hpc/kabre_job_array.slurm
 ```
 
 ## Contribuciones
