@@ -47,6 +47,8 @@ results/
 outputs/logs/
 outputs/figures/
 outputs/data_quality/
+outputs/slurm/
+.venv-kabre/
 *.parquet
 *.h5
 *.nc

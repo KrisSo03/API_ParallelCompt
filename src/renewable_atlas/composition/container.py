@@ -1,20 +1,20 @@
+from renewable_atlas.application.pipelines import AtlasPipeline
+from renewable_atlas.application.services import ClusteringService, ClusterInterpretationService
 from renewable_atlas.config import Settings
 from renewable_atlas.domain import (
     ClimateDataSource,
-    DataRepository,
     ClusteringStrategy,
+    DataRepository,
 )
 from renewable_atlas.infrastructure import (
-    NASAPowerDataSource,
+    BenchmarkService,
+    DaskProcessor,
     FakeClimateDataSource,
+    KMeansClusteringStrategy,
+    NASAPowerDataSource,
     ParquetDataRepository,
     SequentialProcessor,
-    DaskProcessor,
-    KMeansClusteringStrategy,
-    BenchmarkService,
 )
-from renewable_atlas.application.services import ClusteringService, ClusterInterpretationService
-from renewable_atlas.application.pipelines import AtlasPipeline
 
 
 class CompositionRoot:
@@ -23,7 +23,11 @@ class CompositionRoot:
 
     def build_climate_data_source(self, use_fake: bool = False) -> ClimateDataSource:
         if use_fake:
-            return FakeClimateDataSource()
+            return FakeClimateDataSource(
+                seed_offset=self.settings.execution.random_seed,
+                start_year=self.settings.date_range.start_year,
+                end_year=self.settings.date_range.end_year,
+            )
         return NASAPowerDataSource(
             base_url=self.settings.nasa_power.base_url,
             timeout=self.settings.nasa_power.timeout_seconds,
