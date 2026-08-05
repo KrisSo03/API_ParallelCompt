@@ -35,3 +35,10 @@ class KMeansClusteringStrategy(ClusteringStrategy):
         if self.kmeans is None:
             raise ValueError("Must call fit_predict before centroids()")
         return self.scaler.inverse_transform(self.kmeans.cluster_centers_)
+
+    def inertia(self) -> float:
+        """Suma de distancias al cuadrado de cada punto a su centroide.
+        Necesaria para el metodo del codo (elbow method)."""
+        if self.kmeans is None:
+            raise ValueError("Must call fit_predict before inertia()")
+        return float(self.kmeans.inertia_)

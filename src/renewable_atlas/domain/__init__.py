@@ -5,6 +5,7 @@ from .models import (
     BenchmarkResult,
     ExecutionMode,
     ClusterProfile,
+    ClusterQualityReport,
 )
 from .interfaces import (
     ClimateDataSource,
@@ -20,6 +21,7 @@ __all__ = [
     "BenchmarkResult",
     "ExecutionMode",
     "ClusterProfile",
+    "ClusterQualityReport",
     "ClimateDataSource",
     "DataRepository",
     "ProcessingStrategy",

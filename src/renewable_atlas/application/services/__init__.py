@@ -4,6 +4,7 @@ from .indicator_service import IndicatorCalculator
 from .scoring_service import ScoringService
 from .clustering_service import ClusteringService
 from .cluster_interpretation_service import ClusterInterpretationService
+from .cluster_quality_service import ClusterQualityService
 
 __all__ = [
     "DataValidator",
@@ -13,4 +14,5 @@ __all__ = [
     "ScoringService",
     "ClusteringService",
     "ClusterInterpretationService",
+    "ClusterQualityService",
 ]

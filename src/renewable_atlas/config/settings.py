@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, field_validator
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -58,10 +58,13 @@ class BenchmarkSettings(BaseSettings):
         enable_decoding=False,
     )
 
-    def __init__(self, **data):
-        if "worker_counts" in data and isinstance(data["worker_counts"], str):
-            data["worker_counts"] = [int(x.strip()) for x in data["worker_counts"].split(",")]
-        super().__init__(**data)
+    @field_validator("worker_counts", mode="before")
+    @classmethod
+    def _parse_worker_counts(cls, value):
+        if isinstance(value, str):
+            cleaned = value.strip().strip("[]")
+            return [int(x.strip()) for x in cleaned.split(",") if x.strip()]
+        return value
 
 
 class PathSettings(BaseSettings):
