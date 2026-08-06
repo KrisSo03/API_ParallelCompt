@@ -290,11 +290,3 @@ EXPERIMENT_ID=kabre-carga-300 POINTS=300 REPEATS=3 \
 4. Ejecuta la suite completa de pruebas: `pytest`
 5. Haz commits atómicos y descriptivos
 6. Haz push y crea un pull request
-
-## Licencia
-
-MIT
-
-## Contacto
-
-claude@anthropic.com
