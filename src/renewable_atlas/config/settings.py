@@ -42,7 +42,7 @@ class ScoringSettings(BaseSettings):
 
 
 class ClusteringSettings(BaseSettings):
-    n_clusters: int = Field(default=4)
+    n_clusters: int = Field(default=5)
     random_state: int = Field(default=42)
 
     model_config = SettingsConfigDict(env_prefix="CLUSTERING_", env_file=".env", extra="ignore")
