@@ -106,13 +106,19 @@ def performance_summary(summary: pd.DataFrame) -> pd.DataFrame:
     successful = successful.dropna(subset=["workers", "elapsed_seconds"])
     if successful.empty:
         return pd.DataFrame()
+    aggregations = {
+        "tiempo_mediano": ("elapsed_seconds", "median"),
+        "tiempo_promedio": ("elapsed_seconds", "mean"),
+        "repeticiones": ("elapsed_seconds", "size"),
+    }
+    if "peak_memory_mb" in successful.columns:
+        successful["peak_memory_mb"] = pd.to_numeric(
+            successful["peak_memory_mb"], errors="coerce"
+        )
+        aggregations["memoria_mediana_mb"] = ("peak_memory_mb", "median")
     result = (
         successful.groupby("workers", as_index=False)
-        .agg(
-            tiempo_mediano=("elapsed_seconds", "median"),
-            tiempo_promedio=("elapsed_seconds", "mean"),
-            repeticiones=("elapsed_seconds", "size"),
-        )
+        .agg(**aggregations)
         .sort_values("workers")
     )
     baseline_rows = result[result["workers"] == 1]

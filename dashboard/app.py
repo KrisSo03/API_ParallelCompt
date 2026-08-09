@@ -7,9 +7,12 @@ import streamlit as st
 
 from dashboard.charts import (
     country_comparison_chart,
+    efficiency_chart,
+    memory_chart,
     profile_distribution,
     renewable_map,
     scalability_preview,
+    speedup_chart,
 )
 from dashboard.config import (
     APP_TITLE,
@@ -244,17 +247,63 @@ with performance_tab:
     else:
         baseline = performance[performance["workers"] == 1]
         best = performance.loc[performance["tiempo_mediano"].idxmin()]
+        parallel = performance[performance["workers"] > 1]
+        best_parallel = parallel.loc[parallel["speedup"].idxmax()]
+        has_memory = (
+            "memoria_mediana_mb" in performance.columns
+            and performance["memoria_mediana_mb"].notna().any()
+        )
+
         cards = st.columns(4)
-        cards[0].metric("Configuraciones comparadas", len(performance))
-        cards[1].metric("Mejor tiempo", f"{best['tiempo_mediano']:.2f} s", delta=f"{int(best['workers'])} workers", delta_color="off")
-        cards[2].metric("Repeticiones", int(performance["repeticiones"].sum()))
-        cards[3].metric(
+        cards[0].metric(
             "Tiempo base con 1 worker",
             f"{float(baseline.iloc[0]['tiempo_mediano']):.2f} s" if not baseline.empty else "Sin datos",
             delta="referencia para comparar",
             delta_color="off",
         )
-        st.plotly_chart(scalability_preview(summary), width="stretch")
+        cards[1].metric(
+            "Mejor tiempo observado",
+            f"{best['tiempo_mediano']:.2f} s",
+            delta=f"{int(best['workers'])} workers",
+            delta_color="off",
+        )
+        cards[2].metric(
+            "Mejor aceleración paralela",
+            f"{best_parallel['speedup']:.2f}×",
+            delta=f"{int(best_parallel['workers'])} workers",
+            delta_color="off",
+        )
+        cards[3].metric(
+            "Mayor memoria observada",
+            f"{performance['memoria_mediana_mb'].max():.1f} MB" if has_memory else "Sin datos",
+            delta=f"{int(performance.loc[performance['memoria_mediana_mb'].idxmax(), 'workers'])} workers" if has_memory else None,
+            delta_color="off",
+        )
+
+        time_column, memory_column = st.columns(2)
+        with time_column:
+            st.subheader("Tiempo de procesamiento")
+            st.caption("Una barra más corta representa una ejecución más rápida.")
+            st.plotly_chart(scalability_preview(summary), width="stretch")
+        with memory_column:
+            st.subheader("Consumo de memoria")
+            if has_memory:
+                st.caption("Memoria máxima mediana registrada para cada configuración.")
+                st.plotly_chart(memory_chart(performance), width="stretch")
+            else:
+                st.info("El experimento no registró memoria.")
+
+        speedup_column, efficiency_column = st.columns(2)
+        with speedup_column:
+            st.subheader("Aceleración")
+            st.caption("Compara la mejora real con la mejora ideal esperada.")
+            st.plotly_chart(speedup_chart(performance), width="stretch")
+        with efficiency_column:
+            st.subheader("Eficiencia")
+            st.caption("Indica qué porcentaje de la capacidad agregada se aprovechó.")
+            st.plotly_chart(efficiency_chart(performance), width="stretch")
+
+        st.subheader("Detalle por configuración")
         display = performance.rename(
             columns={
                 "workers": "Workers",
@@ -263,6 +312,7 @@ with performance_tab:
                 "repeticiones": "Repeticiones",
                 "speedup": "Aceleración",
                 "eficiencia": "Eficiencia",
+                "memoria_mediana_mb": "Memoria mediana (MB)",
             }
         )
         st.dataframe(
@@ -274,9 +324,13 @@ with performance_tab:
                 "Tiempo promedio (s)": st.column_config.NumberColumn(format="%.2f s"),
                 "Aceleración": st.column_config.NumberColumn(format="%.2fx"),
                 "Eficiencia": st.column_config.NumberColumn(format="percent"),
+                "Memoria mediana (MB)": st.column_config.NumberColumn(format="%.1f MB"),
             },
         )
-        st.caption("Aceleración indica cuántas veces fue más rápido que usar 1 worker. Eficiencia indica cuánto se aprovecharon los workers.")
+        st.caption(
+            "Una aceleración menor que 1× significa que la configuración paralela fue más lenta "
+            "que la ejecución con 1 worker."
+        )
 
     with st.expander("Información técnica de la corrida"):
         st.json(manifest)

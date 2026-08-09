@@ -252,3 +252,93 @@ def scalability_preview(summary: pd.DataFrame) -> go.Figure:
         plot_bgcolor="rgba(0,0,0,0)",
     )
     return figure
+
+
+def speedup_chart(performance: pd.DataFrame) -> go.Figure:
+    figure = go.Figure()
+    figure.add_trace(
+        go.Scatter(
+            x=performance["workers"],
+            y=performance["speedup"],
+            mode="lines+markers+text",
+            text=performance["speedup"],
+            texttemplate="%{text:.2f}×",
+            textposition="top center",
+            name="Aceleración observada",
+            line=dict(color="#176D57", width=4),
+            marker=dict(size=10),
+        )
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=performance["workers"],
+            y=performance["workers"],
+            mode="lines",
+            name="Aceleración ideal",
+            line=dict(color="#AAB7B1", width=2, dash="dash"),
+        )
+    )
+    figure.update_layout(
+        height=340,
+        xaxis_title="Workers",
+        yaxis_title="Cuántas veces más rápido",
+        xaxis=dict(tickmode="array", tickvals=performance["workers"]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=10, r=20, t=50, b=35),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure
+
+
+def efficiency_chart(performance: pd.DataFrame) -> go.Figure:
+    data = performance.copy()
+    data["Eficiencia"] = data["eficiencia"] * 100
+    figure = px.bar(
+        data,
+        x="workers",
+        y="Eficiencia",
+        text="Eficiencia",
+        color="Eficiencia",
+        color_continuous_scale=[[0, "#D9E3DF"], [1, "#176D57"]],
+        range_color=(0, 100),
+        height=320,
+    )
+    figure.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+    figure.update_layout(
+        xaxis_title="Workers",
+        yaxis_title="Aprovechamiento de workers",
+        yaxis_ticksuffix="%",
+        yaxis_range=[0, 112],
+        xaxis=dict(tickmode="array", tickvals=data["workers"]),
+        coloraxis_showscale=False,
+        margin=dict(l=10, r=10, t=20, b=35),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure
+
+
+def memory_chart(performance: pd.DataFrame) -> go.Figure:
+    figure = px.bar(
+        performance,
+        x="workers",
+        y="memoria_mediana_mb",
+        text="memoria_mediana_mb",
+        color="memoria_mediana_mb",
+        color_continuous_scale=[[0, "#E8DFF2"], [1, "#7057A6"]],
+        height=320,
+    )
+    figure.update_traces(texttemplate="%{text:.1f} MB", textposition="outside")
+    maximum = float(performance["memoria_mediana_mb"].max())
+    figure.update_layout(
+        xaxis_title="Workers",
+        yaxis_title="Memoria máxima mediana (MB)",
+        yaxis_range=[0, maximum * 1.16],
+        xaxis=dict(tickmode="array", tickvals=performance["workers"]),
+        coloraxis_showscale=False,
+        margin=dict(l=10, r=10, t=20, b=35),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure

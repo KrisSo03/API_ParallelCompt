@@ -79,6 +79,7 @@ def test_summarizes_performance_and_derives_speedup():
             "status": ["success", "success", "success", "success"],
             "workers": [1, 1, 2, 2],
             "elapsed_seconds": [20.0, 22.0, 11.0, 13.0],
+            "peak_memory_mb": [100.0, 110.0, 190.0, 210.0],
         }
     )
 
@@ -88,3 +89,4 @@ def test_summarizes_performance_and_derives_speedup():
     assert result["tiempo_mediano"].tolist() == [21.0, 12.0]
     assert result.iloc[1]["speedup"] == 21.0 / 12.0
     assert result.iloc[1]["eficiencia"] == (21.0 / 12.0) / 2
+    assert result.iloc[1]["memoria_mediana_mb"] == 200.0
