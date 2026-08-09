@@ -19,6 +19,14 @@ from renewable_atlas.domain import (
 
 logger = logging.getLogger(__name__)
 
+REQUIRED_CLIMATE_COLUMNS = (
+    "sw_dwn",
+    "dni",
+    "ws_50m",
+    "ws_100m",
+)
+
+
 
 class AtlasPipeline:
     def __init__(
@@ -156,18 +164,46 @@ class AtlasPipeline:
         return indicators_df, labels, profiles
 
 
+def _prepare_climate_data(observations):
+    """Prepare climate observations and evaluate data quality before and after cleaning.
+
+    The pre-clean report represents the data after NASA response parsing and
+    ClimateObservation normalization; it is not the original raw NASA response.
+
+    Both pre-clean and post-clean quality evaluation are part of the processing
+    work and therefore contribute to pipeline benchmark execution time.
+    """
+    raw_df = DataTransformer.to_dataframe(observations)
+    validator = DataValidator()
+
+    pre_report = validator.validate(
+        raw_df,
+        required_columns=list(REQUIRED_CLIMATE_COLUMNS),
+    )
+
+    clean_df = DataTransformer.clean(raw_df)
+
+    post_report = validator.validate(
+        clean_df,
+        required_columns=list(REQUIRED_CLIMATE_COLUMNS),
+    )
+
+    return clean_df, pre_report, post_report
+
 def _calculate_indicators(item):
     """Top-level worker task, serializable by Dask's process scheduler."""
     point_id, payload = item
     point = payload["point"]
     observations = payload["observations"]
-    df = DataTransformer.clean(DataTransformer.to_dataframe(observations))
-    report = DataValidator().validate(df, required_columns=["sw_dwn", "dni", "ws_50m", "ws_100m"])
-    if not report.is_valid:
+
+    df, _pre_report, post_report = _prepare_climate_data(observations)
+
+    if not post_report.is_valid:
         raise ValueError(
             f"Point {point_id} has insufficient climate data "
-            f"({report.completeness_ratio:.1%} complete)"
+            f"({post_report.completeness_ratio:.1%} complete)"
         )
+
     return IndicatorCalculator().calculate(
         point_id,
         point.latitude,
