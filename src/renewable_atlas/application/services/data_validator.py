@@ -1,5 +1,6 @@
-import pandas as pd
 from dataclasses import dataclass
+
+import pandas as pd
 
 
 @dataclass
@@ -11,9 +12,13 @@ class ValidationReport:
 
 
 class DataValidator:
-    def validate(self, df: pd.DataFrame) -> ValidationReport:
+    def validate(
+        self, df: pd.DataFrame, required_columns: list[str] | None = None
+    ) -> ValidationReport:
         total_rows = len(df)
-        complete_rows = df.dropna().shape[0]
+        columns = required_columns or list(df.columns)
+        missing_columns = [column for column in columns if column not in df.columns]
+        complete_rows = 0 if missing_columns else df.dropna(subset=columns).shape[0]
         completeness_ratio = complete_rows / total_rows if total_rows > 0 else 0
 
         is_valid = completeness_ratio >= 0.5
