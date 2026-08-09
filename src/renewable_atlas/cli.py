@@ -17,7 +17,12 @@ import pandas as pd
 from renewable_atlas.application.services import DataTransformer, IndicatorCalculator
 from renewable_atlas.composition import CompositionRoot
 from renewable_atlas.config import Settings
-from renewable_atlas.infrastructure.benchmarking import BenchmarkReporter
+from renewable_atlas.infrastructure.benchmarking import (
+    BenchmarkReporter,
+    ProcessTreeMemorySampler,
+    compute_efficiency,
+    compute_speedup,
+)
 from renewable_atlas.infrastructure.grid import SampleGridProvider
 from renewable_atlas.infrastructure.reporting import ClusterReporter
 
@@ -128,7 +133,7 @@ def main(argv=None):
 
     logger.info(f"Generated {len(points)} grid points for analysis")
 
-    use_fake = getattr(args, "use_fake", False)
+    use_fake = getattr(args, "use_fake", False) or settings.execution.source == "fake"
 
     if args.command == "download":
         pipeline = container.build_atlas_pipeline(use_fake=use_fake)
@@ -316,6 +321,7 @@ def _run_hpc_command(args, settings, container):
     summary_name = (
         f"summary-workers-{args.workers:03d}.csv" if args.command == "hpc-run" else "summary.csv"
     )
+    rows = _add_scaling_metrics(rows)
     pd.DataFrame(rows).to_csv(experiment_dir / summary_name, index=False)
     logger.info("Experiment completed: %s", experiment_dir)
     return 0
@@ -335,6 +341,8 @@ def _execute_hpc_run(
     run_dir = experiment_dir / f"workers-{workers:03d}" / f"run-{repeat:02d}"
     run_dir.mkdir(parents=True, exist_ok=True)
     started_at = datetime.now(UTC)
+    memory_sampler = ProcessTreeMemorySampler()
+    memory_sampler.start()
     started = time.perf_counter()
     status = "failed"
     error = None
@@ -356,12 +364,18 @@ def _execute_hpc_run(
         logger.exception("HPC pipeline run failed")
 
     elapsed = time.perf_counter() - started
+    peak_memory_mb = memory_sampler.stop()
+    quality_report = pipeline.clustering_service.last_quality_report
     manifest = {
         "status": status,
         "error": error,
         "started_at_utc": started_at.isoformat(),
         "finished_at_utc": datetime.now(UTC).isoformat(),
         "elapsed_seconds": elapsed,
+        "peak_memory_mb": peak_memory_mb,
+        "memory_scope": (
+            "process_tree" if memory_sampler.includes_children else "coordinator_only"
+        ),
         "source": args.source,
         "point_count": len(points),
         "download": pipeline.last_download_report,
@@ -375,6 +389,7 @@ def _execute_hpc_run(
         "python": sys.version,
         "platform": platform.platform(),
         "settings": settings.snapshot(),
+        "clustering_quality": asdict(quality_report) if quality_report else None,
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     if status == "failed":
@@ -384,6 +399,7 @@ def _execute_hpc_run(
         "workers": workers,
         "repeat": repeat,
         "elapsed_seconds": elapsed,
+        "peak_memory_mb": peak_memory_mb,
         "point_count": len(points),
         "run_dir": str(run_dir),
         "error": error,
@@ -392,8 +408,13 @@ def _execute_hpc_run(
 
 def _validate_hpc_args(args, settings):
     point_count = args.points or settings.grid.sample_size
-    if point_count < settings.clustering.n_clusters:
-        raise ValueError("--points must be at least the configured cluster count")
+    minimum_points = (
+        settings.clustering.min_clusters + 1
+        if settings.clustering.auto_select
+        else settings.clustering.n_clusters
+    )
+    if point_count < minimum_points:
+        raise ValueError(f"--points must be at least {minimum_points} for clustering")
     if args.repeats < 1:
         raise ValueError("--repeats must be at least 1")
     if args.command == "hpc-run" and args.workers < 1:
@@ -406,6 +427,25 @@ def _validate_hpc_result(indicators, labels, expected_rows):
     identity_columns = ["point_id", "latitude", "longitude", "country"]
     if indicators[identity_columns].isnull().any().any():
         raise RuntimeError("Pipeline result contains missing identity values")
+
+
+def _add_scaling_metrics(rows):
+    baseline_times = [
+        row["elapsed_seconds"]
+        for row in rows
+        if row["status"] == "success" and row["workers"] == 1
+    ]
+    baseline = sum(baseline_times) / len(baseline_times) if baseline_times else None
+    for row in rows:
+        row["baseline_seconds"] = baseline
+        if baseline is None or row["status"] != "success":
+            row["speedup"] = None
+            row["efficiency_percent"] = None
+            continue
+        speedup = compute_speedup(baseline, row["elapsed_seconds"])
+        row["speedup"] = speedup
+        row["efficiency_percent"] = compute_efficiency(speedup, row["workers"])
+    return rows
 
 
 def _worker_counts(raw, defaults):

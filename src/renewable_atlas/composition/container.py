@@ -1,5 +1,9 @@
 from renewable_atlas.application.pipelines import AtlasPipeline
-from renewable_atlas.application.services import ClusteringService, ClusterInterpretationService
+from renewable_atlas.application.services import (
+    ClusteringService,
+    ClusterInterpretationService,
+    ClusterQualityService,
+)
 from renewable_atlas.config import Settings
 from renewable_atlas.domain import (
     ClimateDataSource,
@@ -48,7 +52,20 @@ class CompositionRoot:
 
     def build_clustering_service(self) -> ClusteringService:
         strategy = self.build_clustering_strategy()
-        return ClusteringService(strategy)
+        clustering = self.settings.clustering
+        return ClusteringService(
+            strategy,
+            quality_service=ClusterQualityService(),
+            strategy_factory=lambda n_clusters: KMeansClusteringStrategy(
+                n_clusters=n_clusters,
+                random_state=clustering.random_state,
+            ),
+            auto_select=clustering.auto_select,
+            min_clusters=clustering.min_clusters,
+            max_clusters=clustering.max_clusters,
+            random_state=clustering.random_state,
+            stability_runs=clustering.stability_runs,
+        )
 
     def build_cluster_interpretation_service(self) -> ClusterInterpretationService:
         return ClusterInterpretationService()

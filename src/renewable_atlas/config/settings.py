@@ -26,9 +26,9 @@ class DateRangeSettings(BaseSettings):
 
 
 class GridSettings(BaseSettings):
-    size: int = Field(default=80, ge=1)
+    size: int = Field(default=300, ge=1)
     enable_sampling: bool = Field(default=True)
-    sample_size: int = Field(default=80, ge=1)
+    sample_size: int = Field(default=300, ge=1)
 
     model_config = SettingsConfigDict(env_prefix="GRID_", env_file=".env", extra="ignore")
 
@@ -42,10 +42,18 @@ class ScoringSettings(BaseSettings):
 
 
 class ClusteringSettings(BaseSettings):
-    n_clusters: int = Field(default=5)
+    n_clusters: int = Field(default=5, ge=2)
     random_state: int = Field(default=42)
+    auto_select: bool = Field(default=True)
+    min_clusters: int = Field(default=2, ge=2)
+    max_clusters: int = Field(default=10, ge=2)
+    stability_runs: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(env_prefix="CLUSTERING_", env_file=".env", extra="ignore")
+
+    def model_post_init(self, __context):
+        if self.min_clusters > self.max_clusters:
+            raise ValueError("CLUSTERING_MIN_CLUSTERS must be <= CLUSTERING_MAX_CLUSTERS")
 
 
 class BenchmarkSettings(BaseSettings):
@@ -77,7 +85,7 @@ class PathSettings(BaseSettings):
 
 
 class ExecutionSettings(BaseSettings):
-    source: str = Field(default="fake", pattern="^(fake|nasa)$")
+    source: str = Field(default="nasa", pattern="^(fake|nasa)$")
     scheduler: str = Field(default="processes", pattern="^(processes|threads)$")
     random_seed: int = Field(default=42)
 

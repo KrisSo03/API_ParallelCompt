@@ -55,9 +55,11 @@ class ClusterQualityReport:
         lines = [
             f"K recomendado: {self.recommended_k}",
             f"Silhouette({self.recommended_k}) = {self.silhouette_at_recommended:.3f} "
-            f"({'PASA' if self.passes_silhouette else 'NO PASA'}, umbral >= {self.silhouette_threshold})",
+            f"({'PASA' if self.passes_silhouette else 'NO PASA'}, "
+            f"umbral >= {self.silhouette_threshold})",
             f"Davies-Bouldin({self.recommended_k}) = {self.davies_bouldin_at_recommended:.3f} "
-            f"({'PASA' if self.passes_davies_bouldin else 'NO PASA'}, umbral < {self.davies_bouldin_threshold})",
+            f"({'PASA' if self.passes_davies_bouldin else 'NO PASA'}, "
+            f"umbral < {self.davies_bouldin_threshold})",
         ]
         if self.stability_ari_mean is not None:
             passes = self.passes_stability

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from renewable_atlas.application.services import ClusteringService
+
+from renewable_atlas.application.services import ClusteringService, ClusterQualityService
 from renewable_atlas.infrastructure.clustering.kmeans_strategy import KMeansClusteringStrategy
 
 
@@ -100,3 +101,30 @@ def test_clustering_service_country_breakdown_empty_without_country_column():
     labels, profiles = service.cluster(indicators_df)
 
     assert all(profile.country_breakdown == {} for profile in profiles)
+
+
+def test_clustering_service_automatically_selects_k():
+    indicators = pd.DataFrame(
+        {
+            "sw_dwn_mean": [1.0, 1.1, 5.0, 5.1, 9.0, 9.1],
+            "dni_mean": [1.0, 1.1, 5.0, 5.1, 9.0, 9.1],
+            "ws_50m_mean": [1.0, 1.1, 5.0, 5.1, 9.0, 9.1],
+            "ws_100m_mean": [1.0, 1.1, 5.0, 5.1, 9.0, 9.1],
+        }
+    )
+    service = ClusteringService(
+        KMeansClusteringStrategy(n_clusters=2, random_state=0),
+        quality_service=ClusterQualityService(),
+        strategy_factory=lambda k: KMeansClusteringStrategy(k, random_state=0),
+        auto_select=True,
+        min_clusters=2,
+        max_clusters=4,
+        random_state=0,
+    )
+
+    labels, profiles = service.cluster(indicators)
+
+    assert service.last_quality_report is not None
+    assert service.last_quality_report.recommended_k == 3
+    assert len(set(labels)) == 3
+    assert len(profiles) == 3

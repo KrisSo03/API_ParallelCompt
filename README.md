@@ -38,7 +38,8 @@ Este proyecto procesa datos climáticos de NASA POWER para ~300 puntos geográfi
 ### Pipeline de Datos
 - **Cliente NASA POWER**: Cliente HTTP con lógica de reintentos, manejo de timeouts y resiliencia ante errores
 - **Validación de Datos**: Verificación de completitud, validación de rangos, detección de anomalías
-- **Transformación de Datos**: Eliminación de outliers, interpolación, normalización
+- **Transformación de Datos**: Normalización de sentinels y valores no finitos,
+  eliminación de duplicados y validación de rangos
 - **Cálculo de Indicadores**: Índice de Potencial Solar, Índice de Potencial Eólico, puntuación híbrida
 
 ### Estrategias de Procesamiento
@@ -91,11 +92,18 @@ python main.py run-all
 ```
 
 Esto realizará lo siguiente:
-1. Descargar datos climáticos de NASA POWER (o usar datos simulados para pruebas sin conexión)
+1. Descargar datos climáticos reales de NASA POWER para 300 puntos por defecto
 2. Limpiar y validar los datos
 3. Calcular indicadores de energía renovable
-4. Ejecutar clustering K-Means
+4. Evaluar automáticamente K=2..10 y ejecutar K-Means con el mejor silhouette
 5. Generar perfiles de clusters con etiquetas específicas del dominio
+
+Los datos simulados son únicamente una opción reproducible para pruebas y
+benchmarks sin depender de internet:
+
+```bash
+python main.py run-all --use-fake
+```
 
 ### Ejecutar Benchmarking
 
@@ -127,13 +135,16 @@ NASA_POWER_BASE_URL=https://power.larc.nasa.gov/api/
 NASA_POWER_TIMEOUT_SECONDS=30
 NASA_POWER_MAX_RETRIES=3
 
-# Configuración de la Grilla
-GRID_SIZE=20              # Puntos por país
+# Configuración de la grilla (300 puntos totales por defecto)
+GRID_SIZE=300
 GRID_ENABLE_SAMPLING=true
-GRID_SAMPLE_SIZE=20
+GRID_SAMPLE_SIZE=300
 
 # Clustering
-CLUSTERING_N_CLUSTERS=4
+CLUSTERING_AUTO_SELECT=true
+CLUSTERING_MIN_CLUSTERS=2
+CLUSTERING_MAX_CLUSTERS=10
+CLUSTERING_N_CLUSTERS=5   # respaldo si se desactiva la selección automática
 CLUSTERING_RANDOM_STATE=42
 
 # Benchmarking
@@ -145,13 +156,20 @@ PATH_DATA_DIR=./data
 PATH_RESULTS_DIR=./results
 ```
 
-## Rendimiento
+## Rendimiento y escalabilidad
 
-Probado a escala:
-- **20 puntos × 2 años**: ~2.3 segundos en modo secuencial
-- **300 puntos × 1 año**: ~3.5 segundos en modo secuencial
-- **Speedup (4 workers)**: 3.2x típico
-- **Eficiencia (4 workers)**: 80% típico
+El proyecto mide por configuración y repetición: tiempo, memoria RSS pico del
+proceso coordinador más sus workers, speedup y eficiencia. El baseline es el
+promedio de las repeticiones con un worker, no una repetición aislada:
+
+- `speedup = promedio(T_1_worker) / T_workers`
+- `eficiencia = speedup / workers × 100`
+
+Las cifras finales deben obtenerse en Kabré con el mismo commit, entrada y
+checksum. No se publican valores estimados como si fueran resultados reales.
+La corrida recomendada de 300 puntos genera la evidencia en
+`results/<experimento>/summary.csv`; `sacct` complementa la memoria y el estado
+reportados por Slurm. Consulte [la guía de Kabré](docs/KABRE.md).
 
 ## Pruebas
 
@@ -173,7 +191,7 @@ pytest tests/unit/test_domain_models.py
 mypy src/
 
 # Linting
-ruff check src/
+ruff check .
 
 # Formateo
 black src/ --check
@@ -213,15 +231,22 @@ Proyecto_Paralela/
 
 ## Integración con la API de NASA POWER
 
-### Variables Disponibles
-- `SW_DWN`: Flujo de onda corta descendente en superficie (W/m²)
-- `DNI`: Irradiancia Normal Directa (W/m²)
-- `WS50M`: Velocidad del viento a 50m (m/s)
-- `WS100M`: Velocidad del viento a 100m (m/s)
+### Variables disponibles
+
+Se conservan las 18 variables solicitadas a NASA POWER: radiación solar,
+viento, temperatura, presión, humedad, precipitación y nubosidad. Entre ellas
+están `ALLSKY_SFC_SW_DWN`, `ALLSKY_SFC_SW_DNI`, `WS10M` y `WS50M`. NASA POWER
+no entrega `WS100M` en esta consulta: `ws_100m` se deriva explícitamente desde
+`WS50M` con la ley de potencia de exponente 1/7 y queda identificado así en el
+código.
 
 ### Calidad de Datos
-- Objetivo de completitud: ≥85% de valores válidos por punto
+- Umbral técnico mínimo: ≥50% de datos válidos en `sw_dwn`, `dni`, `ws_50m`
+  y `ws_100m`; por debajo de este valor se detiene el punto
+- Objetivo metodológico de calidad: ≥85% de completitud, registrado como meta
+  de la propuesta y no confundido con el umbral mínimo de ejecución
 - Manejo de valores de relleno: -999 → None
+- Reportes pre-clean y post-clean en memoria; la decisión usa el post-clean
 - Validación de rangos aplicada durante el preprocesamiento
 
 ## Metodología
@@ -229,13 +254,13 @@ Proyecto_Paralela/
 ### Puntuación de Energía Renovable
 Normalización min-max sobre la muestra:
 - **Puntuación Solar**: (SW_DWN - min) / (max - min)
-- **Puntuación Eólica**: (WS100M - min) / (max - min)
+- **Puntuación Eólica**: (`ws_100m` derivada - min) / (max - min)
 - **Puntuación Híbrida**: 0.5×Solar + 0.3×Eólica + 0.2×(Solar×Eólica)
 
 ### Validación de Clustering
 - Coeficiente de silhouette ≥ 0.5 para calidad de cluster
 - Índice de Davies-Bouldin < 2.0 para separación de clusters
-- 10+ re-ejecuciones con Índice de Rand Ajustado ≥ 0.95 para estabilidad
+- Índice de Rand Ajustado ≥ 0.95 en las corridas de estabilidad configuradas
 
 ### Procesamiento Paralelo
 - Línea base: procesamiento secuencial (worker_count=1)
@@ -250,7 +275,7 @@ Normalización min-max sobre la muestra:
 - No hay análisis de tendencias temporales (se recomienda la prueba de Mann-Kendall)
 
 ### Mejoras Futuras
-- Dashboard interactivo con Plotly Dash con sistema de 6 vistas
+- Dashboard interactivo (se integra por medio de los CSV estables de `results/`)
 - Exportación a GeoTIFF/NetCDF para integración con SIG
 - Validación contra datos reales de rendimiento de proyectos
 - Cuantificación de incertidumbre mediante métodos de conjunto (ensemble)
@@ -273,14 +298,31 @@ Incluye ambiente fijado, particiones Slurm, prueba debug, matriz de workers,
 monitoreo y organización reproducible de resultados.
 
 ```bash
-# Preparar el ambiente (tarea ligera en login)
-bash hpc/bootstrap_kabre.sh "$PWD"
-mkdir -p outputs/slurm
-
-# Enviar el cálculo a Slurm; no ejecutar el pipeline en login
+# Desde login: enviar el cálculo a Slurm; no instalar ni ejecutar el pipeline
 EXPERIMENT_ID=kabre-carga-300 POINTS=300 REPEATS=3 \
-  sbatch hpc/kabre_job_array.slurm
+  sbatch hpc/kabre_benchmark.slurm
 ```
+
+La preparación del ambiente se realiza en una asignación de cómputo, como
+explica la guía. El script `kabre_benchmark.slurm` es la fuente principal de
+métricas comparables porque reutiliza una única descarga/entrada para toda la
+matriz 1, 2, 4 y 8.
+
+## Contratos de salida
+
+Los comandos `run-all --use-fake` y `benchmark --use-fake` regeneran, sin
+renombrar columnas existentes:
+
+- `results/cluster_indicators.csv`: identidad, coordenadas, país, indicadores,
+  scores y `cluster_id` por punto.
+- `results/cluster_profiles.csv`: etiqueta y descripción por cluster.
+- `results/benchmark/benchmark_results.csv`: tiempo, workers, memoria, speedup
+  y eficiencia.
+
+La selección automática de K y las métricas HPC no cambian los retornos
+`process() -> indicators_df` ni
+`run() -> (indicators_df, labels, profiles)`, por lo que el dashboard mantiene
+su contrato.
 
 ## Contribuciones
 

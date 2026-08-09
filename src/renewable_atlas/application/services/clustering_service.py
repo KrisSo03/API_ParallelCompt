@@ -1,13 +1,35 @@
-import pandas as pd
 import numpy as np
-from renewable_atlas.domain import ClusteringStrategy, ClusterProfile
+import pandas as pd
+
+from renewable_atlas.domain import ClusteringStrategy, ClusterProfile, ClusterQualityReport
+
+from .cluster_quality_service import ClusterQualityService
 
 
 class ClusteringService:
     SCORE_COLUMNS = ("solar_score", "wind_score", "hybrid_score")
 
-    def __init__(self, strategy: ClusteringStrategy):
+    def __init__(
+        self,
+        strategy: ClusteringStrategy,
+        *,
+        quality_service: ClusterQualityService | None = None,
+        strategy_factory=None,
+        auto_select: bool = False,
+        min_clusters: int = 2,
+        max_clusters: int = 10,
+        random_state: int = 42,
+        stability_runs: int = 0,
+    ):
         self.strategy = strategy
+        self.quality_service = quality_service
+        self.strategy_factory = strategy_factory
+        self.auto_select = auto_select
+        self.min_clusters = min_clusters
+        self.max_clusters = max_clusters
+        self.random_state = random_state
+        self.stability_runs = stability_runs
+        self.last_quality_report: ClusterQualityReport | None = None
 
     def cluster(self, indicators_df: pd.DataFrame) -> tuple[np.ndarray, list[ClusterProfile]]:
         feature_columns = [
@@ -22,10 +44,11 @@ class ClusteringService:
 
         features = indicators_df[available_columns].values
 
-        labels = self.strategy.fit_predict(features)
+        strategy = self._select_strategy(features)
+        labels = strategy.fit_predict(features)
 
         profiles = []
-        centroids = self.strategy.centroids()
+        centroids = strategy.centroids()
 
         for cluster_id in range(centroids.shape[0]):
             mask = labels == cluster_id
@@ -50,6 +73,24 @@ class ClusteringService:
             profiles.append(profile)
 
         return labels, profiles
+
+    def _select_strategy(self, features: np.ndarray) -> ClusteringStrategy:
+        self.last_quality_report = None
+        if not self.auto_select:
+            return self.strategy
+        if self.quality_service is None or self.strategy_factory is None:
+            raise RuntimeError(
+                "Automatic K selection requires a quality service and strategy factory"
+            )
+
+        k_values = list(range(self.min_clusters, self.max_clusters + 1))
+        self.last_quality_report = self.quality_service.evaluate_k_range(
+            features,
+            k_values=k_values,
+            random_state=self.random_state,
+            stability_runs=self.stability_runs,
+        )
+        return self.strategy_factory(self.last_quality_report.recommended_k)
 
     def _build_country_breakdown(self, indicators_df: pd.DataFrame, mask: np.ndarray) -> dict:
         """Arma un desglose por pais para los puntos de un cluster: cuantos

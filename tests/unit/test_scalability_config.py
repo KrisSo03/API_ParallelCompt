@@ -1,6 +1,6 @@
 import pytest
 
-from renewable_atlas.config.settings import DateRangeSettings, GridSettings
+from renewable_atlas.config.settings import DateRangeSettings
 from renewable_atlas.infrastructure.grid.sample_grid import SampleGridProvider
 
 
