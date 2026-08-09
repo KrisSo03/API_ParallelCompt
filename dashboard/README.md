@@ -2,11 +2,12 @@
 
 ## Estado actual
 
-Este directorio contiene la base ejecutable del dashboard interactivo. Las etapas 1 y 2 están
-terminadas: Streamlit levanta correctamente, descubre experimentos, workers y repeticiones, carga
-las salidas de una corrida y valida su contenido. Las visualizaciones se implementarán en las
-etapas siguientes. Este documento registra el alcance, las decisiones y el orden de trabajo para
-que el desarrollo pueda continuar sin depender del historial de una conversación.
+Este directorio contiene el dashboard interactivo del proyecto. Streamlit descubre y valida
+corridas y separa la información en Resumen general, Atlas interactivo, Comparación y Rendimiento.
+Los filtros visibles utilizan perfiles energéticos comprensibles en lugar de identificadores
+numéricos de cluster. Este documento registra el alcance y el
+orden de trabajo para que el desarrollo pueda continuar sin depender del historial de una
+conversación.
 
 Rama de trabajo recomendada:
 
@@ -288,23 +289,25 @@ Contendrá CSS y componentes visuales reutilizables para tarjetas, encabezados, 
 
 ## Interfaz planeada
 
-La barra lateral permitirá seleccionar:
+La barra lateral permite seleccionar el experimento que se desea consultar:
 
 ```text
 Experimento
-Workers
-Repetición
-País
-Cluster
-Variable solar, eólica o híbrida
 ```
 
-La zona principal tendrá inicialmente cuatro pestañas:
+El atlas carga automáticamente una corrida válida, porque workers y repeticiones deben producir
+los mismos indicadores energéticos. La pestaña Rendimiento compara todas las configuraciones y
+repeticiones disponibles en `summary.csv`.
 
-1. **Resumen:** tarjetas con puntos, países, scores, fuente, duración y estado.
-2. **Atlas:** mapa Plotly, filtros y tabla de puntos.
-3. **Clusters:** etiquetas, perfiles, percentiles, confianza y distribución por país.
+La zona principal tiene cuatro pestañas:
+
+1. **Resumen general:** resultados de toda la corrida que no cambian con los filtros.
+2. **Atlas interactivo:** mapa y tabla filtrables por país, perfil, indicador y umbral.
+3. **Comparación:** promedios solar, eólico e híbrido de dos o tres países.
 4. **Rendimiento:** tiempos, repeticiones, speedup y eficiencia.
+
+Los identificadores `cluster_id` se conservan para trazabilidad técnica, pero la interfaz agrupa
+los clusters bajo Solar dominante, Eólico dominante, Híbrido alto o Potencial bajo.
 
 ## Comportamiento del mapa
 
@@ -487,6 +490,18 @@ Commit sugerido:
 feat: add interactive renewable atlas
 ```
 
+Estado: implementada. Se agregaron `metrics.py`, `charts.py` y `styles.py`. La aplicación permite
+filtrar por países y clusters, seleccionar el potencial solar, eólico o híbrido, consultar cinco
+tarjetas de resumen, explorar el mapa y ordenar la tabla de puntos. La fuente simulada se identifica
+con una advertencia visible.
+
+### Etapa 3.1: composición narrativa
+
+Estado: implementada. La vista principal se reorganizó como una historia continua: identificación
+de la corrida, filtros horizontales, cuatro indicadores, mapa protagonista, perfil destacado,
+resumen de escalabilidad y ranking de ubicaciones. Experimento, workers y repetición permanecen en
+la barra lateral. La información técnica se mantiene en un desplegable al final.
+
 ### Etapa 4: perfiles
 
 - Mostrar etiquetas, descripciones, confianza, percentiles y distribución por país.
@@ -530,11 +545,11 @@ Antes del despliegue final se debe acordar:
 
 ## Punto de continuación
 
-Las etapas 1 y 2 quedaron implementadas y validadas. El siguiente paso es la Etapa 3:
+Las etapas 1, 2, 3 y 3.1 quedaron implementadas y validadas. El siguiente paso es la Etapa 4:
 
-1. crear `dashboard/charts.py`, `dashboard/metrics.py` y `dashboard/styles.py`;
-2. agregar filtros por país, cluster y tipo de potencial;
-3. construir las tarjetas de resumen;
-4. crear el mapa interactivo con Plotly;
-5. agregar una tabla de puntos filtrados;
-6. realizar el tercer commit.
+1. crear la vista detallada de perfiles de clusters;
+2. mostrar etiqueta, descripción, tamaño y confianza;
+3. visualizar percentiles solar y eólico;
+4. presentar centroides climáticos;
+5. mostrar el desglose de países por cluster;
+6. agregar pruebas de estas transformaciones y realizar el cuarto commit.
