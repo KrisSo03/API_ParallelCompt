@@ -5,8 +5,9 @@ Uso:
     python hpc/compare_worker_consistency.py results/<experiment_id>
 
 Lee cada results/<experiment_id>/workers-XXX/run-YY/indicators.parquet
-(columna 'cluster', y 'point_id' para alinear puntos entre corridas) y su
-cluster_profiles.json correspondiente (para mapear cluster_id -> label).
+(columnas 'cluster_id' y 'point_id' para alinear puntos entre corridas) y su
+cluster_profiles.json correspondiente (para mapear cluster_id -> label). Acepta
+'cluster' únicamente como compatibilidad con resultados históricos.
 
 Para cada corrida contra una corrida base (la primera que se encuentra),
 calcula:
@@ -22,6 +23,7 @@ Tambien evalua silhouette score y Davies-Bouldin de cada corrida usando
 ClusterQualityService sobre las columnas de features reales, para poder
 comparar calidad entre configuraciones de workers.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -31,6 +33,8 @@ import pandas as pd
 from sklearn.metrics import adjusted_rand_score
 
 FEATURE_COLUMNS = ["sw_dwn_mean", "dni_mean", "ws_50m_mean", "ws_100m_mean"]
+CLUSTER_COLUMN = "cluster_id"
+LEGACY_CLUSTER_COLUMN = "cluster"
 
 
 def load_run(run_dir: Path) -> tuple[pd.DataFrame, dict]:
@@ -38,10 +42,24 @@ def load_run(run_dir: Path) -> tuple[pd.DataFrame, dict]:
     if not indicators_path.exists():
         indicators_path = run_dir / "indicators.csv"  # fallback para pruebas locales
 
+    if not indicators_path.exists():
+        raise FileNotFoundError(f"No se encontraron indicadores en {run_dir}")
+
     if indicators_path.suffix == ".parquet":
         df = pd.read_parquet(indicators_path)
     else:
         df = pd.read_csv(indicators_path)
+
+    if "point_id" not in df.columns:
+        raise ValueError(f"{indicators_path} no contiene la columna 'point_id'")
+
+    if CLUSTER_COLUMN not in df.columns:
+        if LEGACY_CLUSTER_COLUMN in df.columns:
+            df = df.rename(columns={LEGACY_CLUSTER_COLUMN: CLUSTER_COLUMN})
+        else:
+            raise ValueError(
+                f"{indicators_path} no contiene '{CLUSTER_COLUMN}' ni '{LEGACY_CLUSTER_COLUMN}'"
+            )
 
     df = df.sort_values("point_id").reset_index(drop=True)
 
@@ -66,7 +84,7 @@ def compare_runs(experiment_dir: Path) -> None:
 
     base_dir = run_dirs[0]
     base_df, base_labels_map = load_run(base_dir)
-    base_labels_named = base_df["cluster"].map(base_labels_map)
+    base_labels_named = base_df[CLUSTER_COLUMN].map(base_labels_map)
 
     print(f"Corrida base: {base_dir}")
     print(f"Puntos: {len(base_df)}\n")
@@ -82,19 +100,29 @@ def compare_runs(experiment_dir: Path) -> None:
 
         df, labels_map = load_run(run_dir)
 
-        if len(df) != len(base_df) or not (df["point_id"].values == base_df["point_id"].values).all():
+        same_points = (
+            len(df) == len(base_df) and (df["point_id"].values == base_df["point_id"].values).all()
+        )
+        if not same_points:
             print(f"{str(run_dir):45s} AVISO: point_id no coincide con la corrida base, se omite")
             continue
 
-        ari = adjusted_rand_score(base_df["cluster"].values, df["cluster"].values)
+        ari = adjusted_rand_score(base_df[CLUSTER_COLUMN].values, df[CLUSTER_COLUMN].values)
 
-        named_labels = df["cluster"].map(labels_map)
+        named_labels = df[CLUSTER_COLUMN].map(labels_map)
         match_pct = float((named_labels.values == base_labels_named.values).mean())
 
         passes = ari >= 0.95
         print(f"{str(run_dir):45s} {ari:8.3f} {match_pct:17.1%} {'SI' if passes else 'NO':>18s}")
 
-        results.append({"run": str(run_dir), "ari": ari, "label_match_pct": match_pct, "passes": passes})
+        results.append(
+            {
+                "run": str(run_dir),
+                "ari": ari,
+                "label_match_pct": match_pct,
+                "passes": passes,
+            }
+        )
 
     if results:
         mean_ari = np.mean([r["ari"] for r in results])
@@ -108,10 +136,15 @@ def compare_quality_across_configs(experiment_dir: Path) -> None:
     try:
         from renewable_atlas.application.services import ClusterQualityService
     except ImportError:
-        print("\n(ClusterQualityService no disponible en este entorno; se omite comparacion de calidad)")
+        print(
+            "\n(ClusterQualityService no disponible en este entorno; "
+            "se omite comparacion de calidad)"
+        )
         return
 
     run_dirs = find_runs(experiment_dir)
+    if not run_dirs:
+        return
     service = ClusterQualityService()
 
     print("\nCalidad de clustering por corrida (silhouette / Davies-Bouldin en el K real usado):")
@@ -125,7 +158,7 @@ def compare_quality_across_configs(experiment_dir: Path) -> None:
         if not available_cols:
             continue
         features = df[available_cols].values
-        k_used = df["cluster"].nunique()
+        k_used = df[CLUSTER_COLUMN].nunique()
 
         try:
             report = service.evaluate_k_range(features, k_values=[k_used])
