@@ -15,7 +15,7 @@ def test_hpc_run_persists_reproducible_artifacts(tmp_path, monkeypatch):
             "--source",
             "fake",
             "--points",
-            "4",
+            "5",
             "--workers",
             "1",
             "--results-dir",
@@ -28,6 +28,8 @@ def test_hpc_run_persists_reproducible_artifacts(tmp_path, monkeypatch):
 
     assert exit_code == 0
     assert manifest["status"] == "success"
-    assert manifest["point_count"] == 4
+    assert manifest["point_count"] == 5
+    assert manifest["download"]["successful_points"] == 5
+    assert manifest["download"]["failed_points"] == []
     assert manifest["workers"] == 1
     assert (run_dir / "indicators.parquet").exists()

@@ -344,7 +344,7 @@ def _execute_hpc_run(
         )
         _validate_hpc_result(indicators, labels, len(points))
         indicators = indicators.copy()
-        indicators["cluster"] = labels
+        indicators["cluster_id"] = labels
         indicators.to_parquet(run_dir / "indicators.parquet", index=False)
         (run_dir / "cluster_profiles.json").write_text(
             json.dumps([asdict(profile) for profile in profiles], indent=2),
@@ -364,6 +364,7 @@ def _execute_hpc_run(
         "elapsed_seconds": elapsed,
         "source": args.source,
         "point_count": len(points),
+        "download": pipeline.last_download_report,
         "workers": workers,
         "scheduler": "sequential" if workers == 1 else args.scheduler,
         "repeat": repeat,
