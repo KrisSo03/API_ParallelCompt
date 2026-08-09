@@ -1,7 +1,15 @@
 import pytest
 
-from renewable_atlas.application.pipelines.atlas_pipeline import AtlasPipeline
-from renewable_atlas.domain import ClimateObservation, GridPoint
+from renewable_atlas.application.pipelines.atlas_pipeline import (
+    AtlasPipeline,
+    _calculate_indicators,
+    _prepare_climate_data,
+)
+from renewable_atlas.domain import (
+    ClimateObservation,
+    GridPoint,
+    RenewableIndicators,
+)
 
 
 class DummyRepository:
@@ -55,3 +63,57 @@ def test_download_fails_when_one_point_has_no_real_data():
     assert pipeline.last_download_report["total_observations"] == 1
     assert len(pipeline.last_download_report["failed_points"]) == 1
     assert repository.saved == []
+
+def test_prepare_climate_data_reports_before_and_after_cleaning():
+    observations = [
+        ClimateObservation(
+            date="2020-01-01",
+            sw_dwn=100.0,
+            dni=500.0,
+            ws_50m=5.0,
+            ws_100m=7.0,
+        ),
+        ClimateObservation(
+            date="2020-01-01",
+            sw_dwn=100.0,
+            dni=500.0,
+            ws_50m=5.0,
+            ws_100m=7.0,
+        ),
+    ]
+
+    clean_df, pre_report, post_report = _prepare_climate_data(observations)
+
+    assert pre_report.duplicate_rows == 1
+    assert post_report.duplicate_rows == 0
+    assert len(clean_df) == 1
+
+
+def test_calculate_indicators_keeps_return_contract():
+    point = GridPoint(
+        latitude=14.5,
+        longitude=-92.0,
+        country="Guatemala",
+    )
+
+    observations = [
+        ClimateObservation(
+            date="2020-01-01",
+            sw_dwn=100.0,
+            dni=500.0,
+            ws_50m=5.0,
+            ws_100m=7.0,
+        )
+    ]
+
+    result = _calculate_indicators(
+        (
+            0,
+            {
+                "point": point,
+                "observations": observations,
+            },
+        )
+    )
+
+    assert isinstance(result, RenewableIndicators)
