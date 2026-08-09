@@ -1,334 +1,347 @@
-# Atlas de Energía Renovable - Híbrido Solar-Eólico para Centroamérica
+# Atlas paralelo de potencial de energía renovable para Centroamérica
 
-Prototipo listo para producción para el procesamiento paralelo de datos climáticos, con el fin de crear un atlas de potencial de energía renovable para Centroamérica.
+Pipeline reproducible que obtiene datos climáticos históricos de NASA POWER,
+calcula indicadores de potencial solar, eólico e híbrido para 300 puntos,
+agrupa regiones mediante K-Means y compara el procesamiento secuencial con
+Dask usando 1, 2, 4 y 8 workers.
 
-## Descripción General del Proyecto
+## Equipo
 
-Este proyecto procesa datos climáticos de NASA POWER para ~300 puntos geográficos en Centroamérica, calcula indicadores de energía renovable (solar, eólica, híbrida), aplica clustering K-Means para análisis espacial, y evalúa el rendimiento del procesamiento paralelo usando Dask.
+- Anyelin Arias
+- Carolina Salas
+- Guissel Betancur
+- Iván Cespedes
+- Kristhel Porras
 
-## Arquitectura
+## Problema y objetivo
 
-### Diseño por Capas (Domain-Driven Design)
+Centroamérica posee recursos solares y eólicos importantes, pero identificar
+zonas prioritarias requiere integrar y procesar grandes volúmenes de datos
+climáticos espaciales y temporales. El proyecto busca responder:
 
+> ¿Cómo puede un pipeline paralelo basado en datos históricos de NASA POWER
+> identificar y clasificar zonas con potencial híbrido solar-eólico y reducir
+> el costo computacional del análisis?
+
+La solución genera indicadores comparables por ubicación, clasifica patrones
+climáticos y produce evidencia de tiempo, speedup, eficiencia y memoria. Se
+alinea con los ODS 7 (energía asequible y no contaminante) y 13 (acción por el
+clima).
+
+## Flujo real del sistema
+
+```text
+Grilla de 300 puntos
+        ↓
+Descarga NASA POWER (secuencial, con reintentos)
+        ↓
+Parseo y modelo ClimateObservation
+        ↓
+Validación pre-clean → limpieza → validación post-clean
+        ↓
+Indicadores por punto (secuencial o Dask)
+        ↓
+Scores solar, eólico e híbrido
+        ↓
+Selección automática de K por silhouette (K=2..10)
+        ↓
+K-Means, interpretación y archivos para el dashboard
 ```
-┌─────────────────────────────────────┐
-│     Presentación / CLI              │
-├─────────────────────────────────────┤
-│     Capa de Aplicación              │
-│  (Servicios, Pipelines, Orquestación)
-├─────────────────────────────────────┤
-│     Capa de Infraestructura         │
-│  (Integraciones externas, persistencia)
-├─────────────────────────────────────┤
-│     Capa de Dominio                 │
-│  (Modelos, Interfaces, Lógica de negocio)
-└─────────────────────────────────────┘
-```
 
-### Principios SOLID Aplicados
+Dask paraleliza la preparación y el cálculo de indicadores independientes por
+punto. La descarga HTTP y el clustering se ejecutan actualmente en el proceso
+coordinador. Esta delimitación es importante al interpretar el speedup.
 
-- **S**ingle Responsibility (Responsabilidad Única): Cada servicio tiene una sola función (validación, transformación, clustering, etc.)
-- **O**pen/Closed (Abierto/Cerrado): Se pueden agregar nuevas estrategias de procesamiento sin modificar el código existente
-- **L**iskov Substitution (Sustitución de Liskov): Todas las implementaciones de ProcessingStrategy son intercambiables
-- **I**nterface Segregation (Segregación de Interfaces): Las interfaces son específicas (ClimateDataSource, DataRepository, etc.)
-- **D**ependency Inversion (Inversión de Dependencias): La composition root conecta implementaciones concretas con abstracciones
-
-## Características Principales
-
-### Pipeline de Datos
-- **Cliente NASA POWER**: Cliente HTTP con lógica de reintentos, manejo de timeouts y resiliencia ante errores
-- **Validación de Datos**: Verificación de completitud, validación de rangos, detección de anomalías
-- **Transformación de Datos**: Normalización de sentinels y valores no finitos,
-  eliminación de duplicados y validación de rangos
-- **Cálculo de Indicadores**: Índice de Potencial Solar, Índice de Potencial Eólico, puntuación híbrida
-
-### Estrategias de Procesamiento
-- **Línea Base Secuencial**: Procesamiento de un solo hilo para comparación
-- **Paralelo con Dask**: Paralelización multi-worker (1, 2, 4, 8 workers configurables)
-- **Benchmarking**: Medición de tiempo de ejecución, speedup, eficiencia y uso de memoria
-
-### Clustering y Análisis
-- **Clustering K-Means**: Determinación óptima de clusters con validación por silhouette
-- **Interpretación de Clusters**: Etiquetado específico del dominio (Dominante-solar, Dominante-eólico, Híbrido-alto, Recurso-bajo)
-- **Análisis Espacial**: Identificación de patrones a nivel de país y regionales
-
-### Configuración
-- Configuración basada en variables de entorno mediante pydantic-settings
-- Configuración jerárquica (NasaPower, Grid, Scoring, Clustering, Benchmark, Paths)
-- Totalmente externalizable para compatibilidad con HPC/supercomputadoras
-
-## Instalación
+## Inicio rápido local
 
 ### Requisitos
-- Python 3.10+
-- pip o conda
 
-### Pasos
+- Python 3.10 o superior; Python 3.12 es la versión usada en Kabré.
+- Git y acceso HTTPS para usar NASA POWER.
+
+### Instalación
 
 ```bash
-# Clonar el repositorio
-git clone https://github.com/krisso03/api_parallelcompt.git
-cd Proyecto_Paralela
-
-# Crear entorno virtual
-python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
-
-# Instalar dependencias
-pip install -e ".[dev]"
-
-# Copiar plantilla de entorno
+git clone https://github.com/KrisSo03/API_ParallelCompt.git
+cd API_ParallelCompt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
 cp .env.example .env
-
-# Editar .env con tu configuración (opcional)
 ```
 
-## Uso
+En PowerShell, active el ambiente con:
 
-### Ejecutar el Pipeline Completo
-
-```bash
-python main.py run-all
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
-Esto realizará lo siguiente:
-1. Descargar datos climáticos reales de NASA POWER para 300 puntos por defecto
-2. Limpiar y validar los datos
-3. Calcular indicadores de energía renovable
-4. Evaluar automáticamente K=2..10 y ejecutar K-Means con el mejor silhouette
-5. Generar perfiles de clusters con etiquetas específicas del dominio
-
-Los datos simulados son únicamente una opción reproducible para pruebas y
-benchmarks sin depender de internet:
+### Verificación reproducible sin internet
 
 ```bash
+ruff check .
+pytest
 python main.py run-all --use-fake
+python main.py benchmark --use-fake
 ```
 
-### Ejecutar Benchmarking
+Estos comandos deben regenerar:
+
+- `results/cluster_indicators.csv`
+- `results/cluster_profiles.csv`
+- `results/benchmark/benchmark_results.csv`
+
+### Ejecución con datos reales
+
+La fuente normal es NASA POWER; no requiere API key:
 
 ```bash
-python main.py benchmark
+python main.py run-all --workers 4
 ```
 
-Compara la ejecución secuencial contra la paralela con 1, 2, 4 y 8 workers. Genera:
-- Tiempo de ejecución por configuración
-- Métricas de speedup
-- Porcentaje de eficiencia
-- Uso de memoria
+La configuración predeterminada consulta 300 puntos entre 2000 y 2023. Para
+una validación real pequeña, modifique temporalmente `.env`, por ejemplo:
 
-### Ejecutar Etapas Individuales
-
-```bash
-python main.py download  # Adquisición de datos
-python main.py process   # Limpieza y transformación
-python main.py cluster   # Análisis K-Means
+```dotenv
+DATE_RANGE_START_YEAR=2023
+DATE_RANGE_END_YEAR=2023
+GRID_SIZE=5
+GRID_SAMPLE_SIZE=5
 ```
 
-## Configuración
+No use `--use-fake` si el objetivo es demostrar acceso a NASA POWER.
 
-Edita el archivo `.env` para personalizar:
+## Comandos
 
-```bash
-# API de NASA POWER
-NASA_POWER_BASE_URL=https://power.larc.nasa.gov/api/
-NASA_POWER_TIMEOUT_SECONDS=30
-NASA_POWER_MAX_RETRIES=3
+| Comando | Propósito |
+|---|---|
+| `python main.py download` | Descargar y guardar observaciones reales |
+| `python main.py process --workers 4` | Descargar, limpiar y calcular indicadores |
+| `python main.py cluster --workers 4` | Procesar, agrupar y generar reportes |
+| `python main.py run-all --workers 4` | Ejecutar el pipeline completo |
+| `python main.py benchmark --use-fake` | Comparar estrategias con entrada reproducible |
+| `python -m renewable_atlas hpc-benchmark ...` | Ejecutar una matriz HPC controlada |
 
-# Configuración de la grilla (300 puntos totales por defecto)
+`--use-fake` es una herramienta de prueba determinista, no la fuente del atlas
+final.
+
+## Datos y metodología
+
+### Fuente y periodo
+
+- Fuente: NASA POWER Daily API.
+- Cobertura: Centroamérica.
+- Periodo predeterminado: 2000–2023.
+- Tamaño predeterminado: 300 puntos.
+- Persistencia: Parquet y CSV.
+
+Se conservan 18 variables de radiación, viento, temperatura, presión, humedad,
+precipitación y nubosidad. Entre las variables centrales están
+`ALLSKY_SFC_SW_DWN`, `ALLSKY_SFC_SW_DNI`, `WS10M` y `WS50M`.
+
+La propuesta menciona `WS100M`, pero NASA POWER no la entrega en esta consulta.
+El campo `ws_100m` se estima desde `WS50M` mediante la ley de potencia con
+exponente 1/7. Esta derivación se conserva explícitamente en el código y en la
+interpretación de resultados.
+
+### Calidad de datos
+
+Por cada punto se evalúan duplicados, faltantes, fechas, sentinels, infinitos y
+rangos climáticos antes y después de la limpieza. La ejecución continúa según
+el reporte post-clean.
+
+- Variables requeridas: `sw_dwn`, `dni`, `ws_50m`, `ws_100m`.
+- Umbral técnico mínimo: 50 % de completitud en variables requeridas.
+- Objetivo metodológico: 85 % de completitud.
+
+El 50 % evita detener innecesariamente una corrida; el 85 % es la meta de
+calidad que debe reportarse. Un reporte pre-clean representa los datos después
+del parseo de NASA, no el JSON HTTP original.
+
+### Indicadores y clustering
+
+Los scores se normalizan sobre la muestra:
+
+- `solar_score`: potencial solar normalizado.
+- `wind_score`: potencial eólico basado en `ws_100m` derivada.
+- `hybrid_score`: combinación ponderada solar-eólica.
+
+El pipeline normal evalúa automáticamente K entre 2 y 10 y selecciona el mayor
+silhouette válido. También registra Davies-Bouldin y puede evaluar estabilidad
+mediante Adjusted Rand Index. Los umbrales metodológicos son:
+
+- Silhouette ≥ 0.5.
+- Davies-Bouldin < 2.0.
+- ARI ≥ 0.95 cuando se habilitan repeticiones de estabilidad.
+
+No alcanzar un umbral se registra como resultado científico; no se oculta ni
+se interpreta automáticamente como un fallo técnico del pipeline.
+
+## Configuración reproducible
+
+Las variables disponibles están documentadas sin secretos en `.env.example`.
+Las más relevantes son:
+
+```dotenv
+DATE_RANGE_START_YEAR=2000
+DATE_RANGE_END_YEAR=2023
 GRID_SIZE=300
 GRID_ENABLE_SAMPLING=true
 GRID_SAMPLE_SIZE=300
 
-# Clustering
 CLUSTERING_AUTO_SELECT=true
 CLUSTERING_MIN_CLUSTERS=2
 CLUSTERING_MAX_CLUSTERS=10
-CLUSTERING_N_CLUSTERS=5   # respaldo si se desactiva la selección automática
+CLUSTERING_N_CLUSTERS=5
 CLUSTERING_RANDOM_STATE=42
 
-# Benchmarking
 BENCHMARK_WORKER_COUNTS=1,2,4,8
 BENCHMARK_REPEATS_PER_CONFIG=3
-
-# Rutas de Salida
-PATH_DATA_DIR=./data
-PATH_RESULTS_DIR=./results
+EXECUTION_SOURCE=nasa
+EXECUTION_RANDOM_SEED=42
 ```
 
-## Rendimiento y escalabilidad
+Para poder comparar dos experimentos deben coincidir como mínimo:
 
-El proyecto mide por configuración y repetición: tiempo, memoria RSS pico del
-proceso coordinador más sus workers, speedup y eficiencia. El baseline es el
-promedio de las repeticiones con un worker, no una repetición aislada:
+| Elemento | Evidencia |
+|---|---|
+| Código | Commit de Git registrado en `manifest.json` |
+| Entrada | Cantidad de puntos y `input_checksum` |
+| Periodo y parámetros | Snapshot de configuración del manifiesto |
+| Ambiente | Python y dependencias de `requirements-kabre.txt` |
+| Recursos | Workers, scheduler, CPUs, memoria y partición Slurm |
+| Repeticiones | Mismo número y fuente de datos |
 
-- `speedup = promedio(T_1_worker) / T_workers`
-- `eficiencia = speedup / workers × 100`
+## Ejecución en Kabré
 
-Las cifras finales deben obtenerse en Kabré con el mismo commit, entrada y
-checksum. No se publican valores estimados como si fueran resultados reales.
-La corrida recomendada de 300 puntos genera la evidencia en
-`results/<experimento>/summary.csv`; `sacct` complementa la memoria y el estado
-reportados por Slurm. Consulte [la guía de Kabré](docs/KABRE.md).
+No ejecute instalaciones, pruebas, descargas ni el pipeline en los nodos
+`login`. Desde login solamente consulte Slurm y envíe trabajos. La preparación
+del ambiente debe hacerse dentro de una asignación de cómputo, siguiendo
+[docs/KABRE.md](docs/KABRE.md).
 
-## Pruebas
+### Smoke test
 
 ```bash
-# Ejecutar todas las pruebas
-pytest
-
-# Ejecutar con cobertura
-pytest --cov=src
-
-# Ejecutar un módulo de pruebas específico
-pytest tests/unit/test_domain_models.py
+EXPERIMENT_ID=smoke-kabre POINTS=8 REPEATS=1 WORKERS=1,2 \
+  sbatch --partition=kura-debug --time=00:15:00 hpc/kabre_benchmark.slurm
 ```
 
-## Calidad de Código
+### Experimento reproducible de escalabilidad
 
 ```bash
-# Verificación de tipos
-mypy src/
-
-# Linting
-ruff check .
-
-# Formateo
-black src/ --check
-```
-
-## Estructura del Proyecto
-
-```
-Proyecto_Paralela/
-├── src/renewable_atlas/
-│   ├── domain/              # Modelos e interfaces principales
-│   │   ├── models/          # GridPoint, ClimateObservation, RenewableIndicators
-│   │   └── interfaces/      # Clases base abstractas (ClimateDataSource, DataRepository, etc.)
-│   ├── infrastructure/      # Implementaciones
-│   │   ├── nasa_power/      # Cliente de la API NASA POWER
-│   │   ├── persistence/     # Repositorio Parquet
-│   │   ├── processing/      # Procesadores secuencial y Dask
-│   │   ├── clustering/      # Estrategia K-Means
-│   │   ├── benchmarking/    # Medición de rendimiento
-│   │   └── grid/            # Proveedor de grilla geográfica
-│   ├── application/         # Lógica de negocio
-│   │   ├── services/        # Validación, transformación y clustering de datos
-│   │   └── pipelines/       # Orquestación del pipeline del atlas
-│   ├── composition/         # Contenedor de inyección de dependencias
-│   ├── config/              # Gestión de configuración
-│   └── cli.py               # Interfaz de línea de comandos
-├── tests/
-│   ├── unit/                # Pruebas unitarias (sin I/O externo)
-│   └── integration/         # Pruebas de integración (con mocks)
-├── docs/
-│   └── decisions/           # Registros de Decisiones de Arquitectura (ADRs)
-├── scripts/                 # Scripts de utilidad
-├── pyproject.toml           # Metadatos y dependencias del proyecto
-├── .env.example             # Plantilla de configuración
-└── README.md                # Este archivo
-```
-
-## Integración con la API de NASA POWER
-
-### Variables disponibles
-
-Se conservan las 18 variables solicitadas a NASA POWER: radiación solar,
-viento, temperatura, presión, humedad, precipitación y nubosidad. Entre ellas
-están `ALLSKY_SFC_SW_DWN`, `ALLSKY_SFC_SW_DNI`, `WS10M` y `WS50M`. NASA POWER
-no entrega `WS100M` en esta consulta: `ws_100m` se deriva explícitamente desde
-`WS50M` con la ley de potencia de exponente 1/7 y queda identificado así en el
-código.
-
-### Calidad de Datos
-- Umbral técnico mínimo: ≥50% de datos válidos en `sw_dwn`, `dni`, `ws_50m`
-  y `ws_100m`; por debajo de este valor se detiene el punto
-- Objetivo metodológico de calidad: ≥85% de completitud, registrado como meta
-  de la propuesta y no confundido con el umbral mínimo de ejecución
-- Manejo de valores de relleno: -999 → None
-- Reportes pre-clean y post-clean en memoria; la decisión usa el post-clean
-- Validación de rangos aplicada durante el preprocesamiento
-
-## Metodología
-
-### Puntuación de Energía Renovable
-Normalización min-max sobre la muestra:
-- **Puntuación Solar**: (SW_DWN - min) / (max - min)
-- **Puntuación Eólica**: (`ws_100m` derivada - min) / (max - min)
-- **Puntuación Híbrida**: 0.5×Solar + 0.3×Eólica + 0.2×(Solar×Eólica)
-
-### Validación de Clustering
-- Coeficiente de silhouette ≥ 0.5 para calidad de cluster
-- Índice de Davies-Bouldin < 2.0 para separación de clusters
-- Índice de Rand Ajustado ≥ 0.95 en las corridas de estabilidad configuradas
-
-### Procesamiento Paralelo
-- Línea base: procesamiento secuencial (worker_count=1)
-- Speedup = T_secuencial / T_paralelo
-- Eficiencia = (Speedup / NúmeroDeWorkers) × 100%
-
-## Limitaciones y Trabajo Futuro
-
-### Limitaciones Actuales
-- Los datos de NASA POWER están limitados a aproximaciones en grilla (~111 km de resolución)
-- La validación del clustering requiere datos reales de proyectos (no disponibles)
-- No hay análisis de tendencias temporales (se recomienda la prueba de Mann-Kendall)
-
-### Mejoras Futuras
-- Dashboard interactivo (se integra por medio de los CSV estables de `results/`)
-- Exportación a GeoTIFF/NetCDF para integración con SIG
-- Validación contra datos reales de rendimiento de proyectos
-- Cuantificación de incertidumbre mediante métodos de conjunto (ensemble)
-- Análisis estacional y de patrones sub-anuales
-
-## Migración a HPC
-
-Este código está diseñado para despliegue en supercomputadoras:
-
-### Elementos Portables
-- Configuración mediante variables de entorno
-- Sin rutas de archivo codificadas de forma fija
-- Abstracción del scheduler de Dask (local/distribuido)
-- La inyección de dependencias permite intercambiar entre mocks y componentes reales
-
-### Despliegue en HPC
-
-La guía completa de Kabré está disponible en [`docs/KABRE.md`](docs/KABRE.md).
-Incluye ambiente fijado, particiones Slurm, prueba debug, matriz de workers,
-monitoreo y organización reproducible de resultados.
-
-```bash
-# Desde login: enviar el cálculo a Slurm; no instalar ni ejecutar el pipeline
 EXPERIMENT_ID=kabre-carga-300 POINTS=300 REPEATS=3 \
   sbatch hpc/kabre_benchmark.slurm
 ```
 
-La preparación del ambiente se realiza en una asignación de cómputo, como
-explica la guía. El script `kabre_benchmark.slurm` es la fuente principal de
-métricas comparables porque reutiliza una única descarga/entrada para toda la
-matriz 1, 2, 4 y 8.
+La entrada sintética determinista permite medir cómputo sin confundirlo con la
+latencia o disponibilidad de NASA. Para verificar la integración real por
+separado:
 
-## Contratos de salida
+```bash
+EXPERIMENT_ID=kabre-nasa-20 POINTS=20 REPEATS=1 SOURCE=nasa \
+  sbatch hpc/kabre_benchmark.slurm
+```
 
-Los comandos `run-all --use-fake` y `benchmark --use-fake` regeneran, sin
-renombrar columnas existentes:
+### Verificación
 
-- `results/cluster_indicators.csv`: identidad, coordenadas, país, indicadores,
-  scores y `cluster_id` por punto.
-- `results/cluster_profiles.csv`: etiqueta y descripción por cluster.
-- `results/benchmark/benchmark_results.csv`: tiempo, workers, memoria, speedup
+```bash
+squeue -u "$USER"
+sacct -j <job-id> --format=JobID,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
+cat results/kabre-carga-300/summary.csv
+python hpc/compare_worker_consistency.py results/kabre-carga-300
+```
+
+Una corrida válida debe mostrar `COMPLETED`, `ExitCode=0:0`, manifiestos con
+`status=success`, el mismo checksum y resultados consistentes entre workers.
+
+## Métricas de rendimiento
+
+`summary.csv` registra cada configuración y repetición:
+
+- Tiempo de ejecución.
+- Memoria RSS pico del coordinador y, cuando el sistema lo permite, sus hijos.
+- Baseline promedio de las repeticiones con un worker.
+- `speedup = promedio(T1) / Tp`.
+- `eficiencia = speedup / p × 100`.
+
+La memoria de `manifest.json` indica `memory_scope=process_tree` o
+`coordinator_only`; `sacct MaxRSS` funciona como comprobación independiente.
+
+### Resultados finales
+
+Las cifras de esta sección deben copiarse exclusivamente del experimento final
+de Kabré. No deben sustituirse por estimaciones ni por un smoke test local.
+
+| Workers | Tiempo promedio (s) | Speedup | Eficiencia (%) | Memoria pico |
+|---:|---:|---:|---:|---:|
+| 1 | Pendiente de corrida final | 1.00 | 100.0 | Pendiente |
+| 2 | Pendiente de corrida final | Pendiente | Pendiente | Pendiente |
+| 4 | Pendiente de corrida final | Pendiente | Pendiente | Pendiente |
+| 8 | Pendiente de corrida final | Pendiente | Pendiente | Pendiente |
+
+## Contratos para el dashboard
+
+No se deben renombrar estas salidas o columnas sin coordinación:
+
+- `results/cluster_indicators.csv`: `point_id`, coordenadas, país,
+  indicadores, scores y `cluster_id`.
+- `results/cluster_profiles.csv`: identificador, etiqueta y descripción.
+- `results/benchmark/benchmark_results.csv`: workers, tiempo, memoria, speedup
   y eficiencia.
 
-La selección automática de K y las métricas HPC no cambian los retornos
-`process() -> indicators_df` ni
-`run() -> (indicators_df, labels, profiles)`, por lo que el dashboard mantiene
-su contrato.
+Los contratos públicos permanecen:
 
-## Contribuciones
+- `process() -> indicators_df`
+- `run() -> (indicators_df, labels, profiles)`
 
-1. Crea una rama de funcionalidad (`git checkout -b feature/tu-funcionalidad`)
-2. Realiza cambios siguiendo los principios SOLID
-3. Agrega pruebas unitarias para la nueva funcionalidad
-4. Ejecuta la suite completa de pruebas: `pytest`
-5. Haz commits atómicos y descriptivos
-6. Haz push y crea un pull request
+La propuesta plantea un dashboard interactivo con Plotly Dash. El pipeline ya
+genera sus contratos de datos; la interfaz visual debe validarse en la rama que
+la implemente antes de declararla terminada.
+
+## Estructura
+
+```text
+API_ParallelCompt/
+├── src/renewable_atlas/
+│   ├── application/       # pipeline y servicios
+│   ├── composition/       # ensamblaje de dependencias
+│   ├── config/            # variables de entorno
+│   ├── domain/            # modelos e interfaces
+│   └── infrastructure/    # NASA, Dask, K-Means, persistencia y reportes
+├── hpc/                   # scripts Slurm y validación entre workers
+├── docs/KABRE.md          # guía operativa de Kabré
+├── tests/                 # pruebas unitarias e integración
+├── requirements-kabre.txt # dependencias fijadas para Kabré
+├── .env.example           # configuración sin credenciales
+└── pyproject.toml         # paquete y herramientas de calidad
+```
+
+## Calidad, seguridad y contribución
+
+Antes de crear un pull request:
+
+```bash
+ruff check .
+pytest
+git diff --check
+```
+
+- No suba tokens, contraseñas, `.env`, ambientes virtuales ni resultados
+  masivos.
+- Trabaje en una rama y use commits pequeños y descriptivos.
+- Mantenga `requirements-kabre.txt` sincronizado con dependencias de runtime.
+- Documente commit, configuración, job ID y ruta del experimento final.
+- Revise que los contratos del dashboard no hayan cambiado.
+
+## Limitaciones
+
+- La resolución espacial y los valores provienen de NASA POWER, no de sensores
+  instalados en cada punto.
+- `ws_100m` es una estimación, no una observación directa.
+- La descarga aún no está paralelizada; los benchmarks aíslan principalmente
+  limpieza, validación y cálculo de indicadores.
+- El atlas identifica potencial climático y no sustituye estudios técnicos,
+  ambientales, económicos o de conexión eléctrica.
+- Los resultados definitivos de escalabilidad deben ejecutarse y documentarse
+  en Kabré.
