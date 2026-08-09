@@ -32,10 +32,30 @@ class ValidationReport:
 
 
 class DataValidator:
-    def validate(self, df: pd.DataFrame) -> ValidationReport:
+    def validate(
+        self,
+        df: pd.DataFrame,
+        required_columns: list[str] | None = None,
+    ) -> ValidationReport:
         total_rows = len(df)
-        complete_rows = df.dropna().shape[0]
-        completeness_ratio = complete_rows / total_rows if total_rows > 0 else 0
+
+        columns = required_columns or list(df.columns)
+        missing_columns = [
+            column for column in columns
+            if column not in df.columns
+        ]
+
+        complete_rows = (
+            0
+            if missing_columns
+            else df.dropna(subset=columns).shape[0]
+        )
+
+        completeness_ratio = (
+            complete_rows / total_rows
+            if total_rows > 0
+            else 0
+        )
 
         # Se mantiene el criterio existente por ahora.
         is_valid = completeness_ratio >= 0.5
@@ -46,7 +66,8 @@ class DataValidator:
         available_columns = list(df.columns)
 
         fully_empty_columns = [
-            col for col in df.columns if df[col].isna().all()
+            col for col in df.columns
+            if df[col].isna().all()
         ]
 
         missing_ratio_by_column = {
@@ -65,9 +86,16 @@ class DataValidator:
         for col in df.columns:
             if pd.api.types.is_numeric_dtype(df[col]):
                 infinite_count_by_column[col] = int(
-                    np.isinf(df[col].to_numpy(dtype=float, na_value=np.nan)).sum()
+                    np.isinf(
+                        df[col].to_numpy(
+                            dtype=float,
+                            na_value=np.nan,
+                        )
+                    ).sum()
                 )
-                sentinel_count_by_column[col] = int((df[col] == -999).sum())
+                sentinel_count_by_column[col] = int(
+                    (df[col] == -999).sum()
+                )
             else:
                 infinite_count_by_column[col] = 0
                 sentinel_count_by_column[col] = 0
@@ -77,19 +105,36 @@ class DataValidator:
         dates_are_sorted = True
 
         if "date" in df.columns:
-            parsed_dates = pd.to_datetime(df["date"], errors="coerce")
+            parsed_dates = pd.to_datetime(
+                df["date"],
+                errors="coerce",
+            )
 
-            invalid_date_rows = int(parsed_dates.isna().sum())
+            invalid_date_rows = int(
+                parsed_dates.isna().sum()
+            )
 
             valid_dates = parsed_dates.dropna()
-            duplicate_date_rows = int(valid_dates.duplicated().sum())
-            dates_are_sorted = bool(valid_dates.is_monotonic_increasing)
+
+            duplicate_date_rows = int(
+                valid_dates.duplicated().sum()
+            )
+
+            dates_are_sorted = bool(
+                valid_dates.is_monotonic_increasing
+            )
 
         out_of_range_count_by_column = {}
 
-        for col, (min_value, max_value) in ClimateObservation.PLAUSIBLE_RANGES.items():
+        for (
+            col,
+            (min_value, max_value),
+        ) in ClimateObservation.PLAUSIBLE_RANGES.items():
             if col in df.columns:
-                numeric_values = pd.to_numeric(df[col], errors="coerce")
+                numeric_values = pd.to_numeric(
+                    df[col],
+                    errors="coerce",
+                )
 
                 out_of_range_count_by_column[col] = int(
                     (

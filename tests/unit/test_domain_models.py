@@ -70,7 +70,6 @@ class TestClimateObservation:
 
         assert obs.dni is None
 
-
     def test_out_of_range_climate_value_is_normalized_to_none(self):
         obs = ClimateObservation(
             date=date(2020, 1, 1),
@@ -81,6 +80,22 @@ class TestClimateObservation:
         )
 
         assert obs.sw_dwn is None
+
+    def test_all_climate_fields_are_normalized(self):
+        obs = ClimateObservation(
+            date=date(2020, 1, 1),
+            sw_dwn=150.0,
+            dni=500.0,
+            ws_50m=5.0,
+            ws_100m=7.0,
+            t2m="25.5",
+            rh2m=101.0,
+            cloud_amt=45.0,
+        )
+
+        assert obs.t2m == 25.5
+        assert obs.rh2m is None
+        assert obs.cloud_amt == 45.0
 
 
 class TestRenewableIndicators:
