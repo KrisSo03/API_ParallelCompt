@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from datetime import date
 from typing import ClassVar
@@ -32,5 +33,21 @@ class ClimateObservation:
         "ws_100m": (0, 30),
     }
 
+    def __post_init__(self) -> None:
+        for field_name, (min_value, max_value) in self.PLAUSIBLE_RANGES.items():
+            value = getattr(self, field_name)
+
+            if value is None:
+                continue
+
+            if math.isnan(value) or math.isinf(value):
+                setattr(self, field_name, None)
+                continue
+
+            if value < min_value or value > max_value:
+                setattr(self, field_name, None)
+
     def is_complete(self) -> bool:
         return all(v is not None for v in [self.sw_dwn, self.dni, self.ws_50m, self.ws_100m])
+
+

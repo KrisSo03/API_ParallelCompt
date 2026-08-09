@@ -1,11 +1,13 @@
-import pytest
 from datetime import date
+
+import pytest
+
 from renewable_atlas.domain import (
-    GridPoint,
-    ClimateObservation,
-    RenewableIndicators,
     BenchmarkResult,
+    ClimateObservation,
     ExecutionMode,
+    GridPoint,
+    RenewableIndicators,
 )
 
 
@@ -45,6 +47,40 @@ class TestClimateObservation:
             ws_100m=7.0,
         )
         assert not obs.is_complete()
+
+    def test_nan_climate_value_is_normalized_to_none(self):
+        obs = ClimateObservation(
+            date=date(2020, 1, 1),
+            sw_dwn=float("nan"),
+            dni=500.0,
+            ws_50m=5.0,
+            ws_100m=7.0,
+        )
+
+        assert obs.sw_dwn is None
+
+    def test_infinite_climate_value_is_normalized_to_none(self):
+        obs = ClimateObservation(
+            date=date(2020, 1, 1),
+            sw_dwn=150.0,
+            dni=float("inf"),
+            ws_50m=5.0,
+            ws_100m=7.0,
+        )
+
+        assert obs.dni is None
+
+
+    def test_out_of_range_climate_value_is_normalized_to_none(self):
+        obs = ClimateObservation(
+            date=date(2020, 1, 1),
+            sw_dwn=500.0,
+            dni=500.0,
+            ws_50m=5.0,
+            ws_100m=7.0,
+        )
+
+        assert obs.sw_dwn is None
 
 
 class TestRenewableIndicators:
