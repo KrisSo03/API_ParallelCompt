@@ -1,5 +1,7 @@
+import pytest
+
 from renewable_atlas.application.pipelines.atlas_pipeline import AtlasPipeline
-from renewable_atlas.domain import GridPoint, ClimateObservation
+from renewable_atlas.domain import ClimateObservation, GridPoint
 
 
 class DummyRepository:
@@ -31,7 +33,7 @@ class DummyInterpretationService:
         return profiles
 
 
-def test_download_continues_when_one_point_fails():
+def test_download_fails_when_one_point_has_no_real_data():
     source = DummyDataSource()
     repository = DummyRepository()
     pipeline = AtlasPipeline(
@@ -41,10 +43,15 @@ def test_download_continues_when_one_point_fails():
         interpretation_service=DummyInterpretationService(),
     )
 
-    points = [GridPoint(latitude=1.0, longitude=2.0, country="Guatemala"), GridPoint(latitude=-1.0, longitude=-2.0, country="Belize")]
+    points = [
+        GridPoint(latitude=1.0, longitude=2.0, country="Guatemala"),
+        GridPoint(latitude=-1.0, longitude=-2.0, country="Belize"),
+    ]
 
-    observations_by_point = pipeline.download(points)
+    with pytest.raises(RuntimeError, match="1/2 points succeeded"):
+        pipeline.download(points)
 
-    assert len(observations_by_point) == 2
-    assert repository.saved[0][0] == "raw_observations"
-    assert len(repository.saved[0][1]) == 1
+    assert pipeline.last_download_report["successful_points"] == 1
+    assert pipeline.last_download_report["total_observations"] == 1
+    assert len(pipeline.last_download_report["failed_points"]) == 1
+    assert repository.saved == []

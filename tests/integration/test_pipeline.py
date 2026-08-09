@@ -19,7 +19,7 @@ class TestAtlasPipeline:
     def test_full_pipeline_with_fake_data(self, container):
         pipeline = container.build_atlas_pipeline(use_fake=True)
         processor = container.build_sequential_processor()
-        grid_provider = SampleGridProvider(size=4, enable_sampling=True, sample_size=4)
+        grid_provider = SampleGridProvider(size=5, enable_sampling=True, sample_size=5)
         points = grid_provider.generate()
 
         assert len(points) > 0

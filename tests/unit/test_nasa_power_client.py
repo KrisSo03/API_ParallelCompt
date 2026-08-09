@@ -1,6 +1,6 @@
+from renewable_atlas.domain import GridPoint
 from renewable_atlas.infrastructure.nasa_power.client import NASAPowerDataSource
 from renewable_atlas.infrastructure.nasa_power.response_parser import parse_point_response
-from renewable_atlas.domain import GridPoint
 
 
 def test_parse_point_response_reads_current_api_shape():
@@ -10,6 +10,8 @@ def test_parse_point_response_reads_current_api_shape():
                 "ALLSKY_SFC_SW_DWN": {"20200101": 5.2, "20200102": 4.8},
                 "WS50M": {"20200101": 2.1, "20200102": 2.5},
                 "WS10M": {"20200101": 2.3, "20200102": 2.7},
+                "T2M": {"20200101": 24.5, "20200102": 25.0},
+                "RH2M": {"20200101": 70.0, "20200102": 72.0},
             }
         }
     }
@@ -19,7 +21,10 @@ def test_parse_point_response_reads_current_api_shape():
     assert len(observations) == 2
     assert observations[0].sw_dwn == 5.2
     assert observations[0].ws_50m == 2.1
-    assert observations[0].ws_100m == 2.3
+    assert observations[0].ws_10m == 2.3
+    assert observations[0].ws_100m > observations[0].ws_50m
+    assert observations[0].t2m == 24.5
+    assert observations[0].rh2m == 70.0
     assert observations[0].dni is None
 
 
@@ -50,9 +55,21 @@ def test_nasa_power_data_source_uses_current_endpoint(monkeypatch):
             assert url == "https://power.larc.nasa.gov/api/temporal/daily/point"
             assert params["community"] == "RE"
             assert params["format"] == "JSON"
-            return DummyResponse({"properties": {"parameter": {"ALLSKY_SFC_SW_DWN": {"20200101": 1.0}, "WS50M": {"20200101": 1.1}, "WS10M": {"20200101": 1.2}}}})
+            return DummyResponse(
+                {
+                    "properties": {
+                        "parameter": {
+                            "ALLSKY_SFC_SW_DWN": {"20200101": 1.0},
+                            "WS50M": {"20200101": 1.1},
+                            "WS10M": {"20200101": 1.2},
+                        }
+                    }
+                }
+            )
 
-    monkeypatch.setattr("renewable_atlas.infrastructure.nasa_power.client.httpx.Client", DummyClient)
+    monkeypatch.setattr(
+        "renewable_atlas.infrastructure.nasa_power.client.httpx.Client", DummyClient
+    )
 
     source = NASAPowerDataSource(base_url="https://power.larc.nasa.gov/api/")
     point = GridPoint(latitude=13.7, longitude=-92.2, country="Guatemala")

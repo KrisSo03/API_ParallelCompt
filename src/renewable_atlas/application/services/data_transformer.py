@@ -1,4 +1,5 @@
 import pandas as pd
+
 from renewable_atlas.domain import ClimateObservation
 
 
@@ -12,11 +13,13 @@ class DataTransformer:
                 "dni": obs.dni,
                 "ws_50m": obs.ws_50m,
                 "ws_100m": obs.ws_100m,
+                "ws_10m": obs.ws_10m,
                 "sw_diff": obs.sw_diff,
                 "clr_sky_sw_dwn": obs.clr_sky_sw_dwn,
                 "allsky_kt": obs.allsky_kt,
                 "wd_100m": obs.wd_100m,
                 "wd_50m": obs.wd_50m,
+                "wd_10m": obs.wd_10m,
                 "t2m": obs.t2m,
                 "t2m_max": obs.t2m_max,
                 "t2m_min": obs.t2m_min,
@@ -42,11 +45,13 @@ class DataTransformer:
                 "dni",
                 "ws_50m",
                 "ws_100m",
+                "ws_10m",
                 "sw_diff",
                 "clr_sky_sw_dwn",
                 "allsky_kt",
                 "wd_100m",
                 "wd_50m",
+                "wd_10m",
                 "t2m",
                 "t2m_max",
                 "t2m_min",
@@ -61,12 +66,10 @@ class DataTransformer:
         ]
 
         for col in available_columns:
-            if col == "sw_dwn":
-                df.loc[(df[col] < 0) | (df[col] > 400), col] = None
-            elif col == "dni":
-                df.loc[(df[col] < 0) | (df[col] > 900), col] = None
-            elif col in ["ws_50m", "ws_100m"]:
-                df.loc[(df[col] < 0) | (df[col] > 30), col] = None
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            if col in ClimateObservation.PLAUSIBLE_RANGES:
+                minimum, maximum = ClimateObservation.PLAUSIBLE_RANGES[col]
+                df.loc[~df[col].between(minimum, maximum), col] = None
 
         df = df.drop_duplicates()
 
