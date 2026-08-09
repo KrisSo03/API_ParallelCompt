@@ -16,7 +16,7 @@ module load mamba/python-3.12.11
 source .venv-kabre/bin/activate
 
 EXPERIMENT_ID="${EXPERIMENT_ID:-kabre-benchmark-${SLURM_JOB_ID}}"
-POINTS="${POINTS:-50}"
+POINTS="${POINTS:-300}"
 REPEATS="${REPEATS:-3}"
 SOURCE="${SOURCE:-fake}"
 WORKERS="${WORKERS:-1,2,4,8}"

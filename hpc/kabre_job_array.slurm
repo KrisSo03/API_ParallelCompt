@@ -21,6 +21,7 @@ WORKERS="${WORKER_MATRIX[$SLURM_ARRAY_TASK_ID]}"
 EXPERIMENT_ID="${EXPERIMENT_ID:-kabre-${SLURM_ARRAY_JOB_ID}}"
 POINTS="${POINTS:-300}"
 REPEATS="${REPEATS:-3}"
+SOURCE="${SOURCE:-fake}"
 
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
@@ -30,7 +31,7 @@ export PYTHONHASHSEED=42
 
 python -m renewable_atlas hpc-run \
     --experiment-id "$EXPERIMENT_ID" \
-    --source fake \
+    --source "$SOURCE" \
     --points "$POINTS" \
     --workers "$WORKERS" \
     --repeats "$REPEATS" \

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from renewable_atlas.domain.models import GridPoint, ClimateObservation
+
+from renewable_atlas.domain.models import ClimateObservation, GridPoint
 
 
 class ClimateDataSource(ABC):

@@ -1,5 +1,7 @@
 import json
 
+import pandas as pd
+
 from renewable_atlas.cli import main
 
 
@@ -32,4 +34,11 @@ def test_hpc_run_persists_reproducible_artifacts(tmp_path, monkeypatch):
     assert manifest["download"]["successful_points"] == 5
     assert manifest["download"]["failed_points"] == []
     assert manifest["workers"] == 1
+    assert manifest["peak_memory_mb"] > 0
+    assert manifest["memory_scope"] in {"process_tree", "coordinator_only"}
+    assert manifest["clustering_quality"]["recommended_k"] in {2, 3, 4}
     assert (run_dir / "indicators.parquet").exists()
+
+    summary = pd.read_csv(tmp_path / "test-experiment" / "summary-workers-001.csv")
+    assert summary.loc[0, "speedup"] == 1.0
+    assert summary.loc[0, "efficiency_percent"] == 100.0

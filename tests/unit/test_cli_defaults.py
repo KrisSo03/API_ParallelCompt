@@ -42,7 +42,10 @@ def test_cli_download_uses_real_data_source_by_default(monkeypatch):
         grid=types.SimpleNamespace(size=1, enable_sampling=False, sample_size=1),
         benchmark=types.SimpleNamespace(worker_counts=[1], repeats_per_config=1),
         clustering=types.SimpleNamespace(n_clusters=2, random_state=0),
-        nasa_power=types.SimpleNamespace(base_url="https://example.com/", timeout_seconds=30, max_retries=3),
+        execution=types.SimpleNamespace(source="nasa"),
+        nasa_power=types.SimpleNamespace(
+            base_url="https://example.com/", timeout_seconds=30, max_retries=3
+        ),
     )
 
     container = DummyContainer(settings)

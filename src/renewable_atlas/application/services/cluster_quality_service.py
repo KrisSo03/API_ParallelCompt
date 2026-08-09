@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.metrics import silhouette_score, davies_bouldin_score, adjusted_rand_score
+from sklearn.metrics import adjusted_rand_score, davies_bouldin_score, silhouette_score
 
 from renewable_atlas.domain import ClusterQualityReport
 from renewable_atlas.infrastructure.clustering import KMeansClusteringStrategy

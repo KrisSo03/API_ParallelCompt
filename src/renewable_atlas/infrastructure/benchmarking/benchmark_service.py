@@ -1,6 +1,8 @@
 import time
+
 from renewable_atlas.domain import BenchmarkResult, ExecutionMode, ProcessingStrategy
-from .metrics import compute_speedup, compute_efficiency, current_process_memory_mb
+
+from .metrics import ProcessTreeMemorySampler, compute_efficiency, compute_speedup
 
 
 class BenchmarkService:
@@ -11,40 +13,39 @@ class BenchmarkService:
         task,
         repeats: int = 3,
     ) -> list[BenchmarkResult]:
-        results = []
-        baseline_time: float | None = None
+        measurements = []
 
         for strategy in strategies:
             for _ in range(repeats):
-                start_mem = current_process_memory_mb()
-                start_time = time.time()
+                memory_sampler = ProcessTreeMemorySampler()
+                memory_sampler.start()
+                start_time = time.perf_counter()
 
-                strategy.process(items, task)
+                try:
+                    strategy.process(items, task)
+                finally:
+                    peak_memory_mb = memory_sampler.stop()
 
-                elapsed = time.time() - start_time
-                end_mem = current_process_memory_mb()
-                memory_delta = max(0, end_mem - start_mem)
+                elapsed = time.perf_counter() - start_time
+                measurements.append((strategy.worker_count, elapsed, peak_memory_mb))
 
-                mode = ExecutionMode.SEQUENTIAL if strategy.worker_count == 1 else ExecutionMode.DASK
+        baseline_times = [elapsed for workers, elapsed, _ in measurements if workers == 1]
+        baseline_time = sum(baseline_times) / len(baseline_times) if baseline_times else None
+        results = []
+        for workers, elapsed, peak_memory_mb in measurements:
+            mode = ExecutionMode.SEQUENTIAL if workers == 1 else ExecutionMode.DASK
+            speedup = compute_speedup(baseline_time, elapsed) if baseline_time is not None else None
+            efficiency = compute_efficiency(speedup, workers) if speedup is not None else None
 
-                speedup = None
-                efficiency = None
-
-                if baseline_time is not None:
-                    speedup = compute_speedup(baseline_time, elapsed)
-                    efficiency = compute_efficiency(speedup, strategy.worker_count)
-
-                if strategy.worker_count == 1:
-                    baseline_time = elapsed
-
-                result = BenchmarkResult(
+            results.append(
+                BenchmarkResult(
                     mode=mode,
-                    worker_count=strategy.worker_count,
+                    worker_count=workers,
                     execution_time_seconds=elapsed,
-                    memory_usage_mb=memory_delta,
+                    memory_usage_mb=peak_memory_mb,
                     speedup=speedup,
                     efficiency=efficiency,
                 )
-                results.append(result)
+            )
 
         return results

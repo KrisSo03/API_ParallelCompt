@@ -1,5 +1,6 @@
 import dask
 from dask import delayed
+
 from renewable_atlas.domain import ProcessingStrategy
 
 

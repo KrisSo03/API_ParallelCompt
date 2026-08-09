@@ -1,4 +1,5 @@
 import numpy as np
+
 from renewable_atlas.domain import GridPoint
 
 
@@ -47,7 +48,11 @@ class SampleGridProvider:
 
             for lat in lat_points:
                 for lon in lon_points:
-                    points.append(GridPoint(latitude=float(lat), longitude=float(lon), country=country))
+                    points.append(
+                        GridPoint(
+                            latitude=float(lat), longitude=float(lon), country=country
+                        )
+                    )
 
         return points
 
