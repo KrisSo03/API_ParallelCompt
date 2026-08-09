@@ -2,11 +2,11 @@
 
 ## Estado actual
 
-Este directorio contiene la base ejecutable del dashboard interactivo. La Etapa 1 está terminada:
-Streamlit está declarado, `app.py` levanta correctamente y descubre los experimentos disponibles.
-Las vistas de datos se implementarán en las etapas siguientes. Este documento registra el alcance,
-las decisiones y el orden de trabajo para que el desarrollo pueda continuar sin depender del
-historial de una conversación.
+Este directorio contiene la base ejecutable del dashboard interactivo. Las etapas 1 y 2 están
+terminadas: Streamlit levanta correctamente, descubre experimentos, workers y repeticiones, carga
+las salidas de una corrida y valida su contenido. Las visualizaciones se implementarán en las
+etapas siguientes. Este documento registra el alcance, las decisiones y el orden de trabajo para
+que el desarrollo pueda continuar sin depender del historial de una conversación.
 
 Rama de trabajo recomendada:
 
@@ -47,8 +47,8 @@ Plotly, Pandas y PyArrow ya estaban declarados en el proyecto. Se agregó Stream
 `requirements-kabre.txt`. La importación, `pip check` y una respuesta HTTP local del servidor se
 validaron con Python 3.12.10.
 
-El entorno local utilizado para validar compatibilidad con Kabré es `.venv312`, creado con Python
-3.12.10. Kabré utiliza Python 3.12.11.
+El entorno local único utilizado para validar compatibilidad con Kabré es `.venv`, creado con
+Python 3.12.10. Kabré utiliza Python 3.12.11.
 
 ## Separación de responsabilidades
 
@@ -385,8 +385,8 @@ No hay puntos disponibles para los filtros seleccionados.
 El entorno local de referencia se prepara con las versiones de Kabré:
 
 ```powershell
-py -3.12 -m venv .venv312
-.\.venv312\Scripts\Activate.ps1
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements-kabre.txt
 python -m pip install --no-deps -e .
@@ -472,6 +472,11 @@ Commit sugerido:
 feat: load and validate experiment results
 ```
 
+Estado: implementada. `data_loader.py` descubre configuraciones y lee Parquet/JSON/CSV;
+`validators.py` verifica manifiestos, columnas, coordenadas, scores, perfiles y cantidad de puntos.
+La interfaz permite seleccionar experimento, workers y repetición. Se agregaron cinco pruebas
+unitarias y la suite completa pasa con 52 pruebas.
+
 ### Etapa 3: resumen y atlas
 
 - Agregar tarjetas, filtros, mapa Plotly y tabla de puntos.
@@ -525,11 +530,11 @@ Antes del despliegue final se debe acordar:
 
 ## Punto de continuación
 
-La Etapa 1 quedó implementada y validada. El siguiente paso es la Etapa 2:
+Las etapas 1 y 2 quedaron implementadas y validadas. El siguiente paso es la Etapa 3:
 
-1. crear `dashboard/data_loader.py` y `dashboard/validators.py`;
-2. descubrir workers y repeticiones del experimento elegido;
-3. cargar `indicators.parquet`, `cluster_profiles.json` y `manifest.json`;
-4. normalizar `cluster`/`cluster_id`;
-5. presentar errores de datos de forma comprensible;
-6. agregar pruebas unitarias del cargador y realizar el segundo commit.
+1. crear `dashboard/charts.py`, `dashboard/metrics.py` y `dashboard/styles.py`;
+2. agregar filtros por país, cluster y tipo de potencial;
+3. construir las tarjetas de resumen;
+4. crear el mapa interactivo con Plotly;
+5. agregar una tabla de puntos filtrados;
+6. realizar el tercer commit.

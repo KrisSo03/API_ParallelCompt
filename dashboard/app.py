@@ -11,6 +11,8 @@ from dashboard.config import (
     discover_experiments,
     results_root,
 )
+from dashboard.data_loader import discover_runs, discover_worker_counts, load_run, load_summary
+from dashboard.validators import DashboardDataError
 
 
 st.set_page_config(
@@ -61,6 +63,21 @@ with st.sidebar:
             options=[path.name for path in experiments],
             help="Las carpetas se descubren automáticamente dentro del directorio de resultados.",
         )
+        selected_path = root / selected_name
+        worker_counts = discover_worker_counts(selected_path)
+        selected_workers = st.selectbox(
+            "Workers",
+            options=worker_counts,
+            format_func=lambda value: f"{value} worker" if value == 1 else f"{value} workers",
+            disabled=not worker_counts,
+        ) if worker_counts else None
+        runs = discover_runs(selected_path, selected_workers) if selected_workers else []
+        selected_run = st.selectbox(
+            "Repetición",
+            options=runs,
+            format_func=lambda reference: f"Run {reference.repeat:02d}",
+            disabled=not runs,
+        ) if runs else None
     else:
         selected_name = None
         st.warning("No hay experimentos disponibles.")
@@ -77,23 +94,36 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if selected_name:
-    selected_path = root / selected_name
-    st.success(f"Experimento detectado: **{selected_name}**")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Experimentos disponibles", len(experiments))
-    col2.metric("Experimento activo", selected_name)
-    col3.metric("Estado del dashboard", "Inicializado")
-    st.markdown(
-        f"""
-        <div class="atlas-stage">
-          <strong>Siguiente etapa</strong><br>
-          Cargar y validar las corridas ubicadas en
-          <code>{selected_path}</code>.
-        </div>
-        """,
-        unsafe_allow_html=True,
+if selected_name and selected_run:
+    try:
+        run_data = load_run(selected_run)
+        summary = load_summary(selected_path)
+    except DashboardDataError as error:
+        st.error(str(error))
+        st.stop()
+
+    manifest = run_data.manifest
+    indicators = run_data.indicators
+    st.success(f"Corrida validada: **{selected_name} / {selected_run.path.parent.name} / {selected_run.path.name}**")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Puntos", len(indicators))
+    col2.metric("Países", indicators["country"].nunique())
+    col3.metric("Fuente", str(manifest.get("source", "desconocida")).upper())
+    col4.metric("Duración", f"{float(manifest.get('elapsed_seconds', 0)):.2f} s")
+
+    st.markdown('<div class="atlas-stage"><strong>Datos cargados y validados</strong></div>', unsafe_allow_html=True)
+    st.dataframe(
+        indicators.head(10),
+        use_container_width=True,
+        hide_index=True,
     )
+
+    with st.expander("Detalles técnicos de la corrida"):
+        st.json(manifest)
+        st.write(f"Perfiles disponibles: **{len(run_data.profiles)}**")
+        st.write(f"Filas en el resumen del experimento: **{len(summary)}**")
+elif selected_name:
+    st.warning("El experimento seleccionado no contiene corridas reconocibles.")
 else:
     st.info(
         "El dashboard está listo. Ejecuta una prueba del pipeline o configura "
