@@ -7,11 +7,13 @@ import streamlit as st
 
 from dashboard.charts import (
     country_comparison_chart,
+    davies_bouldin_quality_chart,
     efficiency_chart,
     memory_chart,
     profile_distribution,
     renewable_map,
     scalability_preview,
+    silhouette_quality_chart,
     speedup_chart,
 )
 from dashboard.config import (
@@ -102,8 +104,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-summary_tab, atlas_tab, comparison_tab, performance_tab = st.tabs(
-    ["Resumen general", "Atlas interactivo", "Comparación", "Rendimiento"]
+summary_tab, atlas_tab, comparison_tab, quality_tab, performance_tab = st.tabs(
+    ["Resumen general", "Atlas interactivo", "Comparación", "Calidad y metodología", "Rendimiento"]
 )
 
 with summary_tab:
@@ -114,9 +116,9 @@ with summary_tab:
 
     cards = st.columns(5)
     cards[0].metric("Puntos analizados", len(indicators), delta=f"{indicators['country'].nunique()} países", delta_color="off")
-    cards[1].metric("Potencial solar general", f"{solar.average_score:.1%}", delta="promedio de todos los puntos", delta_color="off")
-    cards[2].metric("Potencial eólico general", f"{wind.average_score:.1%}", delta="promedio de todos los puntos", delta_color="off")
-    cards[3].metric("Potencial híbrido general", f"{hybrid.average_score:.1%}", delta="promedio de todos los puntos", delta_color="off")
+    cards[1].metric("Índice solar relativo", f"{solar.average_score:.1%}", delta="promedio de todos los puntos", delta_color="off")
+    cards[2].metric("Índice eólico relativo", f"{wind.average_score:.1%}", delta="promedio de todos los puntos", delta_color="off")
+    cards[3].metric("Índice híbrido relativo", f"{hybrid.average_score:.1%}", delta="promedio de todos los puntos", delta_color="off")
     most_common = indicators["cluster_label"].mode().iloc[0]
     cards[4].metric("Perfil más frecuente", CLUSTER_LABELS.get(most_common, most_common), delta="clasificación energética", delta_color="off")
 
@@ -135,8 +137,8 @@ with summary_tab:
             point = _best_point(indicators, metric)
             with st.container(border=True):
                 st.markdown(f"**{label}: {point['country']} · Punto {int(point['point_id'])}**")
-                st.write(f"{float(point[metric]):.1%} de potencial normalizado")
-                st.caption(f"Perfil: {CLUSTER_LABELS.get(point['cluster_label'], point['cluster_label'])}")
+                st.write(f"{float(point[metric]):.1%} de índice relativo")
+                st.caption(f"Perfil regional: {CLUSTER_LABELS.get(point['cluster_label'], point['cluster_label'])}")
 
 with atlas_tab:
     st.header("¿Dónde están los puntos con mayor potencial?")
@@ -176,9 +178,9 @@ with atlas_tab:
     else:
         cards = st.columns(4)
         cards[0].metric("Puntos visibles", len(filtered), delta=f"de {len(indicators)} totales", delta_color="off")
-        cards[1].metric("Solar visible", f"{filtered['solar_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
-        cards[2].metric("Eólico visible", f"{filtered['wind_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
-        cards[3].metric("Híbrido visible", f"{filtered['hybrid_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
+        cards[1].metric("Índice solar visible", f"{filtered['solar_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
+        cards[2].metric("Índice eólico visible", f"{filtered['wind_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
+        cards[3].metric("Índice híbrido visible", f"{filtered['hybrid_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
 
         st.caption(
             "El color representa el perfil. El porcentaje de cada punto corresponde a su perfil: "
@@ -205,7 +207,7 @@ with atlas_tab:
 
 with comparison_tab:
     st.header("¿Cómo se comparan los países?")
-    st.caption("Esta comparación utiliza el promedio de todos los puntos de cada país seleccionado.")
+    st.caption("Compara índices relativos promedio; no representan porcentajes absolutos de energía disponible.")
     countries = sorted(indicators["country"].astype(str).unique())
     defaults = countries[: min(2, len(countries))]
     selected_countries = st.multiselect(
@@ -232,6 +234,87 @@ with comparison_tab:
             column_config={column: st.column_config.NumberColumn(column, format="%.1f%%") for column in ("Solar", "Eólico", "Híbrido")},
         )
 
+with quality_tab:
+    st.header("¿Qué tan confiables son los grupos encontrados?")
+    quality = manifest.get("clustering_quality")
+    if not quality:
+        st.info("Este experimento no contiene métricas de calidad del clustering.")
+    else:
+        recommended_k = int(quality["recommended_k"])
+        silhouette = float(quality["silhouette_at_recommended"])
+        silhouette_threshold = float(quality["silhouette_threshold"])
+        davies_bouldin = float(quality["davies_bouldin_at_recommended"])
+        davies_threshold = float(quality["davies_bouldin_threshold"])
+        stability = quality.get("stability_ari_mean")
+        stability_threshold = float(quality.get("stability_ari_threshold", 0.95))
+
+        cards = st.columns(4)
+        cards[0].metric(
+            "Mejor K observado",
+            recommended_k,
+            delta="mayor separación encontrada",
+            delta_color="off",
+        )
+        cards[1].metric(
+            "Separación de grupos",
+            f"{silhouette:.3f}",
+            delta="Cumple el objetivo" if silhouette >= silhouette_threshold else f"Objetivo: {silhouette_threshold:.2f}",
+            delta_color="off",
+        )
+        cards[2].metric(
+            "Compactación de grupos",
+            f"{davies_bouldin:.3f}",
+            delta="Dentro del límite" if davies_bouldin < davies_threshold else f"Máximo: {davies_threshold:.2f}",
+            delta_color="off",
+        )
+        cards[3].metric(
+            "Estabilidad",
+            f"{float(stability):.3f}" if stability is not None else "No evaluada",
+            delta=f"Objetivo: {stability_threshold:.2f}" if stability is not None else "Requiere varias semillas",
+            delta_color="off",
+        )
+
+        silhouette_column, davies_column = st.columns(2)
+        with silhouette_column:
+            st.subheader("Separación por cantidad de clusters")
+            st.caption("Silhouette: valores más altos representan grupos mejor separados.")
+            st.plotly_chart(silhouette_quality_chart(quality), width="stretch")
+        with davies_column:
+            st.subheader("Dispersión por cantidad de clusters")
+            st.caption("Davies–Bouldin: valores más bajos representan grupos más compactos.")
+            st.plotly_chart(davies_bouldin_quality_chart(quality), width="stretch")
+
+        with st.expander("Cómo interpretar estas métricas"):
+            st.markdown(
+                """
+                - **Mejor K observado:** cantidad de clusters que obtuvo la mayor separación entre las alternativas evaluadas. No implica por sí sola que cumpla el objetivo de calidad.
+                - **Silhouette:** varía aproximadamente entre -1 y 1; un valor mayor indica mejor separación.
+                - **Davies–Bouldin:** empieza en 0; un valor menor indica grupos más compactos y diferenciados.
+                - **Estabilidad ARI:** comprueba si el resultado se mantiene al repetir K-Means con distintas semillas.
+                """
+            )
+
+        st.subheader("Cómo se construyen estos resultados")
+        source_description = (
+            "datos climáticos simulados para pruebas"
+            if source == "FAKE"
+            else "observaciones climáticas obtenidas de NASA POWER"
+        )
+        st.markdown(
+            f"""
+            1. **Fuente:** esta corrida utiliza {source_description}.
+            2. **Preparación:** el pipeline limpia las observaciones y calcula promedios climáticos por punto.
+            3. **Índices relativos:** radiación solar y viento se normalizan entre el mínimo y el máximo de los puntos del experimento.
+            4. **Índice híbrido:** combina `0.5 × solar + 0.3 × eólico + 0.2 × (solar × eólico)`.
+            5. **Clustering:** K-Means agrupa radiación, irradiancia y viento después de estandarizar sus escalas.
+            6. **Interpretación:** cada cluster se traduce a un perfil solar, eólico, híbrido o de bajo potencial.
+            7. **Visualización:** Streamlit lee los archivos terminados; no vuelve a calcular ni modificar los clusters.
+            """
+        )
+        st.caption(
+            "Un índice de 100 % identifica el valor más alto dentro de esta corrida; no equivale a un potencial absoluto de 100 %."
+        )
+
 with performance_tab:
     st.header("¿Cómo se procesaron los datos?")
     st.caption("Esta sección evalúa el procesamiento paralelo; no cambia el potencial energético del mapa.")
@@ -245,7 +328,6 @@ with performance_tab:
         )
         st.metric("Tiempo de la corrida", f"{float(manifest.get('elapsed_seconds', 0) or 0):.2f} s")
     else:
-        baseline = performance[performance["workers"] == 1]
         best = performance.loc[performance["tiempo_mediano"].idxmin()]
         parallel = performance[performance["workers"] > 1]
         best_parallel = parallel.loc[parallel["speedup"].idxmax()]
@@ -257,8 +339,8 @@ with performance_tab:
         cards = st.columns(4)
         cards[0].metric(
             "Tiempo base con 1 worker",
-            f"{float(baseline.iloc[0]['tiempo_mediano']):.2f} s" if not baseline.empty else "Sin datos",
-            delta="referencia para comparar",
+            f"{float(performance.iloc[0]['tiempo_base']):.2f} s",
+            delta="valor calculado por el pipeline",
             delta_color="off",
         )
         cards[1].metric(
@@ -310,6 +392,7 @@ with performance_tab:
                 "tiempo_mediano": "Tiempo mediano (s)",
                 "tiempo_promedio": "Tiempo promedio (s)",
                 "repeticiones": "Repeticiones",
+                "tiempo_base": "Tiempo base (s)",
                 "speedup": "Aceleración",
                 "eficiencia": "Eficiencia",
                 "memoria_mediana_mb": "Memoria mediana (MB)",
@@ -322,6 +405,7 @@ with performance_tab:
             column_config={
                 "Tiempo mediano (s)": st.column_config.NumberColumn(format="%.2f s"),
                 "Tiempo promedio (s)": st.column_config.NumberColumn(format="%.2f s"),
+                "Tiempo base (s)": st.column_config.NumberColumn(format="%.2f s"),
                 "Aceleración": st.column_config.NumberColumn(format="%.2fx"),
                 "Eficiencia": st.column_config.NumberColumn(format="percent"),
                 "Memoria mediana (MB)": st.column_config.NumberColumn(format="%.1f MB"),

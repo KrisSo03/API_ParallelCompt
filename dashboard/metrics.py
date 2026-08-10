@@ -92,8 +92,14 @@ def country_comparison(indicators: pd.DataFrame, countries: list[str]) -> pd.Dat
 
 
 def performance_summary(summary: pd.DataFrame) -> pd.DataFrame:
-    """Summarize repeated successful runs and derive speedup and efficiency."""
-    required = {"workers", "elapsed_seconds"}
+    """Aggregate the performance metrics already produced by the pipeline."""
+    required = {
+        "workers",
+        "elapsed_seconds",
+        "baseline_seconds",
+        "speedup",
+        "efficiency_percent",
+    }
     if summary.empty or not required.issubset(summary.columns):
         return pd.DataFrame()
     successful = summary.copy()
@@ -103,13 +109,26 @@ def performance_summary(summary: pd.DataFrame) -> pd.DataFrame:
     successful["elapsed_seconds"] = pd.to_numeric(
         successful["elapsed_seconds"], errors="coerce"
     )
-    successful = successful.dropna(subset=["workers", "elapsed_seconds"])
+    for column in ("baseline_seconds", "speedup", "efficiency_percent"):
+        successful[column] = pd.to_numeric(successful[column], errors="coerce")
+    successful = successful.dropna(
+        subset=[
+            "workers",
+            "elapsed_seconds",
+            "baseline_seconds",
+            "speedup",
+            "efficiency_percent",
+        ]
+    )
     if successful.empty:
         return pd.DataFrame()
     aggregations = {
         "tiempo_mediano": ("elapsed_seconds", "median"),
         "tiempo_promedio": ("elapsed_seconds", "mean"),
         "repeticiones": ("elapsed_seconds", "size"),
+        "tiempo_base": ("baseline_seconds", "median"),
+        "speedup": ("speedup", "median"),
+        "eficiencia_porcentaje": ("efficiency_percent", "median"),
     }
     if "peak_memory_mb" in successful.columns:
         successful["peak_memory_mb"] = pd.to_numeric(
@@ -121,13 +140,7 @@ def performance_summary(summary: pd.DataFrame) -> pd.DataFrame:
         .agg(**aggregations)
         .sort_values("workers")
     )
-    baseline_rows = result[result["workers"] == 1]
-    if baseline_rows.empty:
-        result["speedup"] = pd.NA
-        result["eficiencia"] = pd.NA
-    else:
-        baseline = float(baseline_rows.iloc[0]["tiempo_mediano"])
-        result["speedup"] = baseline / result["tiempo_mediano"]
-        result["eficiencia"] = result["speedup"] / result["workers"]
+    result["eficiencia"] = result["eficiencia_porcentaje"] / 100
+    result = result.drop(columns=["eficiencia_porcentaje"])
     result["workers"] = result["workers"].astype(int)
     return result.reset_index(drop=True)

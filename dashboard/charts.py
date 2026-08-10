@@ -43,9 +43,9 @@ def profile_distribution(indicators: pd.DataFrame) -> go.Figure:
 
 def country_comparison_chart(comparison: pd.DataFrame) -> go.Figure:
     labels = {
-        "solar_score": "Solar",
-        "wind_score": "Eólico",
-        "hybrid_score": "Híbrido",
+        "solar_score": "Índice solar",
+        "wind_score": "Índice eólico",
+        "hybrid_score": "Índice híbrido",
     }
     long_data = comparison.melt(
         id_vars="country", var_name="Indicador", value_name="Potencial"
@@ -59,16 +59,16 @@ def country_comparison_chart(comparison: pd.DataFrame) -> go.Figure:
         barmode="group",
         text="Potencial",
         color_discrete_map={
-            "Solar": METRICS["solar_score"]["color"],
-            "Eólico": METRICS["wind_score"]["color"],
-            "Híbrido": METRICS["hybrid_score"]["color"],
+            "Índice solar": METRICS["solar_score"]["color"],
+            "Índice eólico": METRICS["wind_score"]["color"],
+            "Índice híbrido": METRICS["hybrid_score"]["color"],
         },
         height=430,
     )
     figure.update_traces(texttemplate="%{text:.0%}", textposition="outside")
     figure.update_layout(
         xaxis_title=None,
-        yaxis_title="Potencial promedio",
+        yaxis_title="Índice relativo promedio",
         yaxis_tickformat=".0%",
         yaxis_range=[0, 1.12],
         legend_title_text="Indicador",
@@ -338,6 +338,91 @@ def memory_chart(performance: pd.DataFrame) -> go.Figure:
         xaxis=dict(tickmode="array", tickvals=performance["workers"]),
         coloraxis_showscale=False,
         margin=dict(l=10, r=10, t=20, b=35),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure
+
+
+def silhouette_quality_chart(quality: dict) -> go.Figure:
+    scores = quality.get("silhouette_by_k", {})
+    data = pd.DataFrame(
+        sorted((int(k), float(value)) for k, value in scores.items()),
+        columns=["Clusters", "Silhouette"],
+    )
+    recommended = int(quality["recommended_k"])
+    threshold = float(quality["silhouette_threshold"])
+    figure = px.line(
+        data,
+        x="Clusters",
+        y="Silhouette",
+        markers=True,
+        height=340,
+    )
+    figure.update_traces(line=dict(color="#176D57", width=4), marker=dict(size=9))
+    figure.add_hline(
+        y=threshold,
+        line_dash="dash",
+        line_color="#A66A00",
+        annotation_text=f"Objetivo: {threshold:.2f}",
+        annotation_position="top left",
+    )
+    figure.add_vline(
+        x=recommended,
+        line_dash="dot",
+        line_color="#7057A6",
+        annotation_text=f"Mejor resultado: K={recommended}",
+        annotation_position="bottom right",
+    )
+    figure.update_layout(
+        xaxis_title="Cantidad de clusters (K)",
+        yaxis_title="Separación entre grupos",
+        yaxis_range=[0, max(0.6, threshold * 1.15)],
+        xaxis=dict(tickmode="array", tickvals=data["Clusters"]),
+        margin=dict(l=10, r=20, t=25, b=35),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    return figure
+
+
+def davies_bouldin_quality_chart(quality: dict) -> go.Figure:
+    scores = quality.get("davies_bouldin_by_k", {})
+    data = pd.DataFrame(
+        sorted((int(k), float(value)) for k, value in scores.items()),
+        columns=["Clusters", "Davies-Bouldin"],
+    )
+    recommended = int(quality["recommended_k"])
+    threshold = float(quality["davies_bouldin_threshold"])
+    figure = px.line(
+        data,
+        x="Clusters",
+        y="Davies-Bouldin",
+        markers=True,
+        height=340,
+    )
+    figure.update_traces(line=dict(color="#3E8DA8", width=4), marker=dict(size=9))
+    figure.add_hline(
+        y=threshold,
+        line_dash="dash",
+        line_color="#A66A00",
+        annotation_text=f"Máximo aceptado: {threshold:.2f}",
+        annotation_position="bottom left",
+    )
+    figure.add_vline(
+        x=recommended,
+        line_dash="dot",
+        line_color="#7057A6",
+        annotation_text=f"Mejor resultado: K={recommended}",
+        annotation_position="top right",
+    )
+    maximum = max(float(data["Davies-Bouldin"].max()), threshold)
+    figure.update_layout(
+        xaxis_title="Cantidad de clusters (K)",
+        yaxis_title="Dispersión interna (menor es mejor)",
+        yaxis_range=[0, maximum * 1.15],
+        xaxis=dict(tickmode="array", tickvals=data["Clusters"]),
+        margin=dict(l=10, r=20, t=25, b=35),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )

@@ -3,7 +3,8 @@
 ## Estado actual
 
 Este directorio contiene el dashboard interactivo del proyecto. Streamlit descubre y valida
-corridas y separa la información en Resumen general, Atlas interactivo, Comparación y Rendimiento.
+corridas y separa la información en Resumen general, Atlas interactivo, Comparación, Calidad y
+metodología, y Rendimiento.
 Los filtros visibles utilizan perfiles energéticos comprensibles en lugar de identificadores
 numéricos de cluster. Este documento registra el alcance y el
 orden de trabajo para que el desarrollo pueda continuar sin depender del historial de una
@@ -299,15 +300,19 @@ El atlas carga automáticamente una corrida válida, porque workers y repeticion
 los mismos indicadores energéticos. La pestaña Rendimiento compara todas las configuraciones y
 repeticiones disponibles en `summary.csv`.
 
-La zona principal tiene cuatro pestañas:
+La zona principal tiene cinco pestañas:
 
 1. **Resumen general:** resultados de toda la corrida que no cambian con los filtros.
 2. **Atlas interactivo:** mapa y tabla filtrables por país, perfil, indicador y umbral.
 3. **Comparación:** promedios solar, eólico e híbrido de dos o tres países.
-4. **Rendimiento:** tiempos, repeticiones, speedup y eficiencia.
+4. **Calidad y metodología:** mejor K observado, separación, compactación, estabilidad y trazabilidad de los resultados.
+5. **Rendimiento:** tiempos, repeticiones, speedup, eficiencia y memoria.
 
 Los identificadores `cluster_id` se conservan para trazabilidad técnica, pero la interfaz agrupa
 los clusters bajo Solar dominante, Eólico dominante, Híbrido alto o Potencial bajo.
+
+La cantidad de clusters matemáticos puede ser mayor que la cantidad de perfiles energéticos. Cada
+cluster se interpreta después del cálculo y más de uno puede recibir la misma etiqueta energética.
 
 ## Comportamiento del mapa
 
