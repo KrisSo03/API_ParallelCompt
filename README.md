@@ -86,11 +86,14 @@ python main.py run-all --use-fake
 python main.py benchmark --use-fake
 ```
 
-Estos comandos deben regenerar:
+El flujo general también puede regenerar estos reportes históricos:
 
 - `results/cluster_indicators.csv`
 - `results/cluster_profiles.csv`
 - `results/benchmark/benchmark_results.csv`
+
+Estos CSV no son la entrada del dashboard. Para Streamlit utilice las salidas de `hpc-run` o
+`hpc-benchmark` documentadas en [docs/DASHBOARD.md](docs/DASHBOARD.md).
 
 ### Ejecución con datos reales
 
@@ -282,22 +285,20 @@ de Kabré. No deben sustituirse por estimaciones ni por un smoke test local.
 
 ## Contratos para el dashboard
 
-No se deben renombrar estas salidas o columnas sin coordinación:
+El dashboard de Streamlit consume las salidas reproducibles de cada experimento:
 
-- `results/cluster_indicators.csv`: `point_id`, coordenadas, país,
-  indicadores, scores y `cluster_id`.
-- `results/cluster_profiles.csv`: identificador, etiqueta y descripción.
-- `results/benchmark/benchmark_results.csv`: workers, tiempo, memoria, speedup
-  y eficiencia.
+- `summary.csv`: workers, repetición, tiempo, memoria, baseline, speedup y eficiencia.
+- `workers-NNN/run-NN/indicators.parquet`: coordenadas, país, indicadores y `cluster_id`.
+- `workers-NNN/run-NN/cluster_profiles.json`: perfiles interpretados.
+- `workers-NNN/run-NN/manifest.json`: fuente, configuración, calidad y trazabilidad.
 
 Los contratos públicos permanecen:
 
 - `process() -> indicators_df`
 - `run() -> (indicators_df, labels, profiles)`
 
-La propuesta plantea un dashboard interactivo con Plotly Dash. El pipeline ya
-genera sus contratos de datos; la interfaz visual debe validarse en la rama que
-la implemente antes de declararla terminada.
+La interfaz está implementada con Streamlit y Plotly. Consulte la guía de
+[ejecución, interpretación y validación del dashboard](docs/DASHBOARD.md).
 
 ## Estructura
 
