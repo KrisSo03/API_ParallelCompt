@@ -16,6 +16,7 @@ from dashboard.charts import (
     silhouette_quality_chart,
     speedup_chart,
 )
+from dashboard.atlas_filters import point_label, select_featured_points
 from dashboard.config import (
     APP_TITLE,
     CLUSTER_LABELS,
@@ -36,11 +37,17 @@ from dashboard.validators import DashboardDataError
 
 ALL_COUNTRIES = "Todos los países"
 ALL_PROFILES = "Todos los perfiles"
+ALL_POINTS = "Todos los puntos"
+FEATURED_POINTS = "Puntos destacados"
+NO_POINT = "Ningún punto seleccionado"
 
 
 def _reset_atlas_filters() -> None:
+    st.session_state.atlas_view = ALL_POINTS
     st.session_state.atlas_country = ALL_COUNTRIES
     st.session_state.atlas_profile = ALL_PROFILES
+    st.session_state.atlas_top_n = 5
+    st.session_state.atlas_point = NO_POINT
 
 
 def _best_point(data: pd.DataFrame, metric: str) -> pd.Series:
@@ -149,16 +156,27 @@ with atlas_tab:
     profile_options = [ALL_PROFILES, *profile_values]
     if st.session_state.get("atlas_country") not in country_options:
         st.session_state.atlas_country = ALL_COUNTRIES
-    if st.session_state.get("atlas_profile") not in profile_options:
-        st.session_state.atlas_profile = ALL_PROFILES
+    view = st.segmented_control(
+        "Puntos mostrados",
+        [ALL_POINTS, FEATURED_POINTS],
+        default=ALL_POINTS,
+        key="atlas_view",
+    )
+
+    active_profile_options = profile_values if view == FEATURED_POINTS else profile_options
+    if st.session_state.get("atlas_profile") not in active_profile_options:
+        preferred_profile = "Hybrid-high"
+        st.session_state.atlas_profile = (
+            preferred_profile if preferred_profile in active_profile_options else active_profile_options[0]
+        )
 
     filters = st.columns([1, 1, 0.45, 2], vertical_alignment="bottom")
     with filters[0]:
         country = st.selectbox("País", country_options, key="atlas_country")
     with filters[1]:
         profile = st.selectbox(
-            "Tipo de potencial",
-            profile_options,
+            "Perfil energético",
+            active_profile_options,
             format_func=lambda value: ALL_PROFILES if value == ALL_PROFILES else CLUSTER_LABELS.get(value, value),
             key="atlas_profile",
         )
@@ -173,11 +191,51 @@ with atlas_tab:
     if profile != ALL_PROFILES:
         filtered = filtered[filtered["cluster_label"] == profile]
 
+    ranking_metric = "hybrid_score"
+    if view == FEATURED_POINTS and not filtered.empty:
+        profile_metrics = {
+            "Solar-dominant": "solar_score",
+            "Wind-dominant": "wind_score",
+            "Hybrid-high": "hybrid_score",
+            "Lower-resource": "hybrid_score",
+        }
+        ranking_metric = profile_metrics.get(profile, "hybrid_score")
+        featured_controls = st.columns([1, 3])
+        with featured_controls[0]:
+            top_n = st.selectbox("Cantidad por país", [5, 10], key="atlas_top_n")
+        with featured_controls[1]:
+            st.caption(
+                f"Se muestran los mejores puntos de cada país para el perfil seleccionado, "
+                f"ordenados por {METRICS[ranking_metric]['label'].lower()}."
+            )
+        filtered = select_featured_points(filtered, ranking_metric, top_n)
+
+    point_options = [NO_POINT]
+    labels_to_points: dict[str, tuple[str, int]] = {}
+    for _, row in filtered.sort_values(["country", "point_id"]).iterrows():
+        label = point_label(row)
+        point_options.append(label)
+        labels_to_points[label] = (str(row["country"]), int(row["point_id"]))
+    if st.session_state.get("atlas_point") not in point_options:
+        st.session_state.atlas_point = NO_POINT
+    selected_label = st.selectbox(
+        "Buscar punto",
+        point_options,
+        key="atlas_point",
+        help="Selecciona una ubicación para centrarla y resaltarla en el mapa.",
+    )
+    selected_point = labels_to_points.get(selected_label)
+
     if filtered.empty:
         st.warning("No existen puntos que cumplan los filtros seleccionados.")
     else:
         cards = st.columns(4)
-        cards[0].metric("Puntos visibles", len(filtered), delta=f"de {len(indicators)} totales", delta_color="off")
+        cards[0].metric(
+            "Puntos visibles",
+            len(filtered),
+            delta=f"de {len(indicators)} analizados",
+            delta_color="off",
+        )
         cards[1].metric("Índice solar visible", f"{filtered['solar_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
         cards[2].metric("Índice eólico visible", f"{filtered['wind_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
         cards[3].metric("Índice híbrido visible", f"{filtered['hybrid_score'].mean():.1%}", delta="promedio de la selección", delta_color="off")
@@ -186,11 +244,14 @@ with atlas_tab:
             "El color representa el perfil. El porcentaje de cada punto corresponde a su perfil: "
             "solar, eólico o híbrido. Los porcentajes son índices relativos a los puntos del experimento."
         )
-        st.plotly_chart(renewable_map(filtered), width="stretch")
+        st.plotly_chart(renewable_map(filtered, selected_point=selected_point), width="stretch")
 
         st.subheader("Puntos incluidos en la selección")
-        ranking = filtered.sort_values("hybrid_score", ascending=False).copy()
-        ranking["Ubicación"] = ranking.apply(lambda row: f"{row['country']} · Punto {int(row['point_id'])}", axis=1)
+        ranking = filtered.sort_values(ranking_metric, ascending=False).copy()
+        ranking["Ubicación"] = ranking.apply(point_label, axis=1)
+        if selected_label != NO_POINT:
+            ranking["Seleccionado"] = ranking["Ubicación"].eq(selected_label)
+            ranking = ranking.sort_values(["Seleccionado", ranking_metric], ascending=[False, False])
         ranking["Perfil regional"] = ranking["cluster_label"].map(CLUSTER_LABELS).fillna(ranking["cluster_label"])
         for column in ("solar_score", "wind_score", "hybrid_score"):
             ranking[column] *= 100
