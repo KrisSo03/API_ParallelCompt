@@ -216,6 +216,44 @@ Para poder comparar dos experimentos deben coincidir como mínimo:
 | Recursos | Workers, scheduler, CPUs, memoria y partición Slurm |
 | Repeticiones | Mismo número y fuente de datos |
 
+## Dataset masivo desde NASA POWER en AWS
+
+La ruta masiva no hace miles de solicitudes al Point API. Lee los archivos
+Zarr públicos de NASA POWER por HTTPS, por mes y con Dask:
+
+- `syn1deg`: 6 variables solares y nubosidad.
+- `merra2`: 10 variables meteorológicas horarias.
+- `T2M_MAX` y `T2M_MIN`: derivadas de `T2M` para conservar las 18 variables
+  del pipeline existente.
+
+Los Parquet de staging se guardan fuera de `results`, por defecto en
+`data/aws-staging/<experimento>/hourly`. `--target-gib 5` se refiere al tamaño
+lógico sin comprimir registrado por Parquet; el tamaño físico será menor por
+la compresión Zstandard. El manifiesto registra ambos valores.
+
+Para una prueba pequeña local o dentro de un nodo de cómputo:
+
+```bash
+python -m renewable_atlas aws-run \
+  --experiment-id aws-smoke \
+  --points 8 \
+  --start-date 2023-01-01 \
+  --end-date 2023-01-07 \
+  --target-gib 0.001 \
+  --download
+```
+
+El comando anterior deja sus salidas procesadas junto al staging y **no toca**
+los archivos del dashboard. Después de validar el experimento, agregue
+`--publish-results` para actualizar únicamente:
+
+- `results/cluster_indicators.csv`
+- `results/cluster_profiles.csv`
+
+`results/benchmark/benchmark_results.csv` no se sobrescribe. Se mantienen
+`point_id`, coordenadas, país, los indicadores, scores y `cluster_id`; los
+perfiles conservan etiqueta y descripción.
+
 ## Ejecución en Kabré
 
 No ejecute instalaciones, pruebas, descargas ni el pipeline en los nodos
@@ -236,6 +274,22 @@ EXPERIMENT_ID=smoke-kabre POINTS=8 REPEATS=1 WORKERS=1,2 \
 EXPERIMENT_ID=kabre-carga-300 POINTS=300 REPEATS=3 \
   sbatch hpc/kabre_benchmark.slurm
 ```
+
+### Dataset AWS de aproximadamente 5 GiB
+
+La descarga y el procesamiento deben enviarse a Slurm; no ejecute este comando
+directamente en `login`:
+
+```bash
+mkdir -p outputs/slurm
+EXPERIMENT_ID=nasa-aws-5gb-v1 POINTS=300 TARGET_GIB=5 \
+  sbatch hpc/kabre_aws_5gb.slurm
+```
+
+El script usa `/data/$USER/renewable-atlas/aws-staging` para no llenar el home.
+Deje `PUBLISH_RESULTS=false` durante la validación. Cuando el manifiesto y los
+CSV procesados sean correctos, ejecute una corrida final con
+`PUBLISH_RESULTS=true` o publique manualmente con `aws-run --publish-results`.
 
 La entrada sintética determinista permite medir cómputo sin confundirlo con la
 latencia o disponibilidad de NASA. Para verificar la integración real por
@@ -340,8 +394,8 @@ git diff --check
 - La resolución espacial y los valores provienen de NASA POWER, no de sensores
   instalados en cada punto.
 - `ws_100m` es una estimación, no una observación directa.
-- La descarga aún no está paralelizada; los benchmarks aíslan principalmente
-  limpieza, validación y cálculo de indicadores.
+- La ruta Point API descarga secuencialmente. La ruta AWS lee por bloques
+  mensuales y procesa el staging con Dask.
 - El atlas identifica potencial climático y no sustituye estudios técnicos,
   ambientales, económicos o de conexión eléctrica.
 - Los resultados definitivos de escalabilidad deben ejecutarse y documentarse

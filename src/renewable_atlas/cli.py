@@ -24,6 +24,7 @@ from renewable_atlas.infrastructure.benchmarking import (
     compute_speedup,
 )
 from renewable_atlas.infrastructure.grid import SampleGridProvider
+from renewable_atlas.infrastructure.nasa_power import NasaPowerAwsProcessor, NasaPowerAwsStager
 from renewable_atlas.infrastructure.reporting import ClusterReporter
 
 logging.basicConfig(
@@ -107,6 +108,26 @@ def main(argv=None):
         "--workers", default=None, help="Comma-separated worker counts"
     )
 
+    aws_stage_parser = subparsers.add_parser(
+        "aws-stage", help="Stage a large NASA POWER dataset from public AWS Zarr archives"
+    )
+    _add_aws_arguments(aws_stage_parser)
+
+    aws_run_parser = subparsers.add_parser(
+        "aws-run", help="Process staged NASA POWER AWS data with Dask"
+    )
+    _add_aws_arguments(aws_run_parser)
+    aws_run_parser.add_argument(
+        "--download",
+        action="store_true",
+        help="Download AWS partitions before processing them",
+    )
+    aws_run_parser.add_argument(
+        "--publish-results",
+        action="store_true",
+        help="Replace the fixed cluster CSV outputs consumed by Streamlit",
+    )
+
     args = parser.parse_args(argv)
 
     def build_processor(workers: int):
@@ -123,6 +144,9 @@ def main(argv=None):
 
     if args.command in {"hpc-run", "hpc-benchmark"}:
         return _run_hpc_command(args, settings, container)
+
+    if args.command in {"aws-stage", "aws-run"}:
+        return _run_aws_command(args, settings, container)
 
     grid_provider = SampleGridProvider(
         size=settings.grid.size,
@@ -273,6 +297,84 @@ def _add_hpc_arguments(parser):
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--results-dir", default=None)
     parser.add_argument("--scheduler", choices=("processes", "threads"), default="processes")
+
+
+def _add_aws_arguments(parser):
+    parser.add_argument("--experiment-id", required=True)
+    parser.add_argument("--points", type=int, default=None)
+    parser.add_argument("--start-date", default=None, help="Inclusive date, YYYY-MM-DD")
+    parser.add_argument("--end-date", default=None, help="Inclusive date, YYYY-MM-DD")
+    parser.add_argument("--target-gib", type=float, default=5.0)
+    parser.add_argument("--size-basis", choices=("logical", "disk"), default="logical")
+    parser.add_argument("--staging-root", default=None)
+
+
+def _run_aws_command(args, settings, container):
+    experiment_id = _safe_experiment_id(args.experiment_id)
+    point_count = args.points or settings.grid.sample_size
+    points = SampleGridProvider(
+        size=max(settings.grid.size, point_count),
+        enable_sampling=True,
+        sample_size=point_count,
+    ).generate()
+    staging_root = Path(args.staging_root or settings.paths.aws_staging_dir).resolve()
+    staging_dir = staging_root / experiment_id
+    start_date = args.start_date or f"{settings.date_range.start_year}-01-01"
+    end_date = args.end_date or f"{settings.date_range.end_year}-12-31"
+
+    if args.command == "aws-stage" or args.download:
+        manifest = NasaPowerAwsStager().stage(
+            points=points,
+            output_dir=staging_dir,
+            start_date=start_date,
+            end_date=end_date,
+            target_gib=args.target_gib,
+            size_basis=args.size_basis,
+        )
+        logger.info(
+            "AWS staging completed: %s rows, %.3f GiB logical, %.3f GiB on disk",
+            manifest["row_count"],
+            manifest["logical_uncompressed_gib"],
+            manifest["disk_gib"],
+        )
+
+    if args.command == "aws-stage":
+        return 0
+
+    if not (staging_dir / "manifest.json").exists():
+        raise FileNotFoundError(
+            f"No staged dataset found at {staging_dir}; run aws-stage or use --download"
+        )
+
+    indicators = NasaPowerAwsProcessor().process(staging_dir)
+    pipeline = container.build_atlas_pipeline(use_fake=False)
+    labels, profiles = pipeline.cluster(indicators)
+    experiment_results = staging_dir / "processed"
+    _save_cluster_results(indicators, labels, profiles, experiment_results)
+
+    if args.publish_results:
+        fixed_results = Path(settings.paths.results_dir)
+        _save_cluster_results(indicators, labels, profiles, fixed_results)
+        logger.info(
+            "Published Streamlit-compatible outputs without changing filenames or columns: %s",
+            fixed_results,
+        )
+    else:
+        logger.info(
+            "Processed outputs saved under %s; fixed Streamlit results were not changed",
+            experiment_results,
+        )
+    return 0
+
+
+def _save_cluster_results(indicators, labels, profiles, output_dir):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    reporter = ClusterReporter(indicators, labels, profiles)
+    reporter.save_csv(output_dir / "cluster_indicators.csv")
+    reporter.save_parquet(output_dir / "cluster_indicators.parquet")
+    reporter.save_cluster_profiles(output_dir / "cluster_profiles.csv")
+    reporter.save_summary(output_dir)
 
 
 def _run_hpc_command(args, settings, container):

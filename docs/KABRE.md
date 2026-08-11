@@ -94,3 +94,32 @@ cat results/kabre-carga-300/summary.csv
 sacct -j <job-id> --format=JobID,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
 python hpc/compare_worker_consistency.py results/kabre-carga-300
 ```
+
+## 5. Dataset masivo NASA POWER desde AWS
+
+El staging masivo debe quedar en `/data`, no en el home ni en `results`. Desde
+login envíe el trabajo sin ejecutar Python directamente:
+
+```bash
+mkdir -p outputs/slurm
+EXPERIMENT_ID=nasa-aws-5gb-v1 POINTS=300 TARGET_GIB=5 \
+  sbatch hpc/kabre_aws_5gb.slurm
+```
+
+Revise el job desde login:
+
+```bash
+squeue -j <job-id>
+sacct -j <job-id> --format=JobID,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
+cat outputs/slurm/atlas-aws-5gb-<job-id>.err
+cat /data/$USER/renewable-atlas/aws-staging/nasa-aws-5gb-v1/manifest.json
+```
+
+El estado esperado es `COMPLETED`, `ExitCode=0:0` y un manifiesto con 18
+variables. El staging conserva las observaciones horarias particionadas por
+año y mes; Dask calcula los indicadores agregados sin cargar los 5 GiB completos
+en memoria.
+
+No use `PUBLISH_RESULTS=true` hasta revisar las salidas bajo
+`.../<experimento>/processed`. La publicación mantiene los nombres y columnas
+que consume Streamlit y no modifica el CSV histórico de benchmarks.

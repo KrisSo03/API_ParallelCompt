@@ -37,7 +37,13 @@ def _write_run(run_dir: Path, cluster_column: str = "cluster_id") -> RunReferenc
     run_dir.mkdir(parents=True)
     _valid_indicators(cluster_column).to_parquet(run_dir / "indicators.parquet", index=False)
     profiles = [
-        {"cluster_id": cluster_id, "label": "Test", "description": "Test", "size": 1, "centroid": {}}
+        {
+            "cluster_id": cluster_id,
+            "label": "Test",
+            "description": "Test",
+            "size": 1,
+            "centroid": {},
+        }
         for cluster_id in (0, 1)
     ]
     (run_dir / "cluster_profiles.json").write_text(json.dumps(profiles), encoding="utf-8")
@@ -93,4 +99,3 @@ def test_loads_single_and_array_summaries(tmp_path):
     summary = load_summary(tmp_path)
 
     assert summary["workers"].tolist() == [1, 4]
-

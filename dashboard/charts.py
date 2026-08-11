@@ -105,7 +105,13 @@ def renewable_map(indicators: pd.DataFrame, metric: str | None = None) -> go.Fig
         plot_data["Valor del perfil"] = plot_data[metric]
     plot_data["Tamaño"] = plot_data["Valor del perfil"].fillna(0).clip(lower=0) + 0.08
     plot_data["Potencial visible"] = (
-        plot_data["Valor del perfil"].fillna(0).clip(lower=0, upper=1).mul(100).round().astype(int).astype(str)
+        plot_data["Valor del perfil"]
+        .fillna(0)
+        .clip(lower=0, upper=1)
+        .mul(100)
+        .round()
+        .astype(int)
+        .astype(str)
         + "%"
     )
     plot_data["Punto"] = plot_data["point_id"].astype(int)

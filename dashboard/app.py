@@ -19,7 +19,6 @@ from dashboard.charts import (
 from dashboard.config import (
     APP_TITLE,
     CLUSTER_LABELS,
-    METRICS,
     discover_experiments,
     results_root,
 )
@@ -32,7 +31,6 @@ from dashboard.metrics import (
 )
 from dashboard.styles import APP_CSS
 from dashboard.validators import DashboardDataError
-
 
 ALL_COUNTRIES = "Todos los países"
 ALL_PROFILES = "Todos los perfiles"
