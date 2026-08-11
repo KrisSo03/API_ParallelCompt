@@ -79,7 +79,11 @@ def country_comparison_chart(comparison: pd.DataFrame) -> go.Figure:
     return figure
 
 
-def renewable_map(indicators: pd.DataFrame, metric: str | None = None) -> go.Figure:
+def renewable_map(
+    indicators: pd.DataFrame,
+    metric: str | None = None,
+    selected_point: tuple[str, int] | None = None,
+) -> go.Figure:
     plot_data = indicators.copy()
     plot_data["Categoría"] = plot_data["cluster_label"].map(CLUSTER_LABELS).fillna(
         plot_data["cluster_label"]
@@ -151,7 +155,6 @@ def renewable_map(indicators: pd.DataFrame, metric: str | None = None) -> go.Fig
         lon="longitude",
         color="Categoría",
         size="Tamaño",
-        text="Potencial visible",
         size_max=22,
         hover_name="country",
         custom_data=["Punto", "Categoría", "Fortaleza principal", "Detalle de potenciales"],
@@ -161,8 +164,6 @@ def renewable_map(indicators: pd.DataFrame, metric: str | None = None) -> go.Fig
         height=590,
     )
     figure.update_traces(
-        textposition="top center",
-        textfont=dict(size=11, color="#12332D"),
         marker=dict(opacity=0.88),
         hovertemplate=(
             "<b>%{hovertext} · Punto %{customdata[0]}</b><br>"
@@ -172,6 +173,39 @@ def renewable_map(indicators: pd.DataFrame, metric: str | None = None) -> go.Fig
             "<extra></extra>"
         ),
     )
+    if selected_point is not None:
+        selected_country, selected_id = selected_point
+        selected = plot_data[
+            (plot_data["country"].astype(str) == selected_country)
+            & (plot_data["point_id"].astype(int) == selected_id)
+        ]
+        if not selected.empty:
+            row = selected.iloc[0]
+            figure.update_layout(
+                mapbox_center={"lat": float(row["latitude"]), "lon": float(row["longitude"])},
+                mapbox_zoom=7,
+            )
+            figure.add_trace(
+                go.Scattermapbox(
+                    lat=[row["latitude"]],
+                    lon=[row["longitude"]],
+                    mode="markers",
+                    marker={"size": 28, "color": "#FFFFFF", "opacity": 0.95},
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+            figure.add_trace(
+                go.Scattermapbox(
+                    lat=[row["latitude"]],
+                    lon=[row["longitude"]],
+                    mode="markers",
+                    marker={"size": 18, "color": "#E45756", "opacity": 1},
+                    text=[f"{selected_country} · Punto {selected_id}"],
+                    hovertemplate="<b>%{text}</b><extra></extra>",
+                    showlegend=False,
+                )
+            )
     figure.update_layout(
         mapbox_style="carto-positron",
         margin=dict(l=0, r=0, t=10, b=0),
