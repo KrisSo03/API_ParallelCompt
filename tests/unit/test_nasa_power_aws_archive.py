@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
+from fsspec.registry import get_filesystem_class
 from streamlit.testing.v1 import AppTest
 
 from dashboard.data_loader import RunReference, load_run, load_summary
@@ -24,6 +25,10 @@ class Point:
     latitude: float
     longitude: float
     country: str
+
+
+def test_http_filesystem_runtime_dependency_is_available():
+    assert get_filesystem_class("https").__name__ == "HTTPFileSystem"
 
 
 def _dataset(variables):
