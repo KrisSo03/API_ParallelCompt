@@ -17,8 +17,10 @@ source .venv-kabre/bin/activate
 EXPERIMENT_ID="${EXPERIMENT_ID:-nasa-aws-5gb-${SLURM_JOB_ID}}"
 POINTS="${POINTS:-300}"
 TARGET_GIB="${TARGET_GIB:-5}"
-START_DATE="${START_DATE:-2001-01-01}"
-END_DATE="${END_DATE:-2023-12-31}"
+SIZE_BASIS="${SIZE_BASIS:-logical}"
+START_DATE="${START_DATE:-2016-01-01}"
+# Fecha común más reciente verificada para syn1deg y MERRA-2 hourly LST.
+END_DATE="${END_DATE:-2026-05-30}"
 STAGING_ROOT="${STAGING_ROOT:-/data/${USER}/renewable-atlas/aws-staging}"
 WORKERS="${WORKERS:-1,2,4,8}"
 REPEATS="${REPEATS:-1}"
@@ -41,7 +43,7 @@ python -m renewable_atlas aws-run \
   --start-date "${START_DATE}" \
   --end-date "${END_DATE}" \
   --target-gib "${TARGET_GIB}" \
-  --size-basis logical \
+  --size-basis "${SIZE_BASIS}" \
   --staging-root "${STAGING_ROOT}" \
   --workers "${WORKERS}" \
   --repeats "${REPEATS}" \

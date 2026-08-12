@@ -153,6 +153,8 @@ def test_aws_run_writes_an_experiment_consumed_by_streamlit(tmp_path, monkeypatc
         "variable_count": 18,
         "point_count": 8,
         "row_count": len(rows),
+        "logical_uncompressed_gib": 1.25,
+        "disk_gib": 1.05,
     }
     experiment_dir = tmp_path / "results" / "aws-dashboard"
     settings = Settings.load()
@@ -197,3 +199,8 @@ def test_aws_run_writes_an_experiment_consumed_by_streamlit(tmp_path, monkeypatc
         "Calidad y metodología",
         "Rendimiento",
     ]
+    metric_labels = [metric.label for metric in app.metric]
+    assert "Tamaño real en disco" in metric_labels
+    assert "Tamaño lógico" in metric_labels
+    assert "Filas horarias" in metric_labels
+    assert "Variables climáticas" in metric_labels
