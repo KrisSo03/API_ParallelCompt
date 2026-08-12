@@ -25,6 +25,7 @@ dependencies = [
     "tenacity>=8.2.3",
     "python-dotenv>=1.0.0",
     "psutil>=6.1.1",
+    "shapely>=2.0.6,<3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +48,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages]
 find = {where = ["src"]}
+
+[tool.setuptools.package-data]
+"renewable_atlas.infrastructure.grid" = ["data/*.geojson"]
 
 [tool.mypy]
 python_version = "3.10"

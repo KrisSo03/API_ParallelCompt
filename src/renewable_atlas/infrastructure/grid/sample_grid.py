@@ -1,28 +1,25 @@
-import numpy as np
+import json
+from functools import cached_property
+from importlib.resources import files
+
+from shapely.geometry import Point, shape
 
 from renewable_atlas.domain import GridPoint
 
 
 class SampleGridProvider:
-    CENTRAL_AMERICA_POINTS = [
-        (14.5, -92.0, "Guatemala"),
-        (13.7, -88.9, "El Salvador"),
-        (14.0, -87.2, "Honduras"),
-        (15.2, -86.2, "Nicaragua"),
-        (10.0, -84.3, "Costa Rica"),
-        (8.5, -80.8, "Panama"),
-        (17.0, -89.6, "Belize"),
-    ]
+    """Generate reproducible points located inside Central American countries."""
 
-    COUNTRY_BOUNDS = {
-        "Guatemala": {"lat": (13.7, 17.8), "lon": (-92.2, -88.2)},
-        "El Salvador": {"lat": (12.9, 14.5), "lon": (-90.1, -87.7)},
-        "Honduras": {"lat": (12.9, 17.0), "lon": (-89.4, -83.0)},
-        "Nicaragua": {"lat": (10.7, 15.5), "lon": (-87.6, -83.0)},
-        "Costa Rica": {"lat": (8.0, 11.3), "lon": (-85.9, -82.6)},
-        "Panama": {"lat": (7.2, 10.8), "lon": (-82.9, -77.0)},
-        "Belize": {"lat": (15.5, 18.5), "lon": (-89.2, -87.5)},
-    }
+    COUNTRIES = (
+        "Belize",
+        "Guatemala",
+        "El Salvador",
+        "Honduras",
+        "Nicaragua",
+        "Costa Rica",
+        "Panama",
+    )
+    GEOJSON_NAME = "central_america.geojson"
 
     def __init__(self, size: int = 20, enable_sampling: bool = True, sample_size: int = 10):
         self.size = size
@@ -30,35 +27,85 @@ class SampleGridProvider:
         self.sample_size = sample_size
 
     def generate(self, max_points: int | None = None) -> list[GridPoint]:
-        points = self._generate_grid()
-        if self.enable_sampling and len(points) > self.sample_size:
-            points = self._evenly_spaced_subset(points, self.sample_size)
+        requested = self.sample_size if self.enable_sampling else self.size
         if max_points is not None:
-            points = points[:max_points]
+            requested = min(requested, max_points)
+        if requested < 1:
+            return []
+
+        allocation = self._allocate_points(requested)
+        points: list[GridPoint] = []
+        for country_index, country in enumerate(self.COUNTRIES):
+            points.extend(
+                self._sample_country(
+                    country,
+                    allocation[country],
+                    sequence_offset=country_index * 997,
+                )
+            )
         return points
 
-    def _generate_grid(self) -> list[GridPoint]:
-        points = []
-        for country, bounds in self.COUNTRY_BOUNDS.items():
-            lat_range = bounds["lat"]
-            lon_range = bounds["lon"]
+    @cached_property
+    def country_geometries(self) -> dict:
+        resource = files(__package__).joinpath("data", self.GEOJSON_NAME)
+        data = json.loads(resource.read_text(encoding="utf-8"))
+        geometries = {
+            feature["properties"]["country"]: shape(feature["geometry"])
+            for feature in data["features"]
+        }
+        missing = set(self.COUNTRIES) - set(geometries)
+        if missing:
+            raise ValueError(f"Missing country geometries: {sorted(missing)}")
+        return geometries
 
-            lat_points = np.linspace(lat_range[0], lat_range[1], self.size // 7 + 1)
-            lon_points = np.linspace(lon_range[0], lon_range[1], self.size // 7 + 1)
+    def _allocate_points(self, total: int) -> dict[str, int]:
+        base, remainder = divmod(total, len(self.COUNTRIES))
+        return {
+            country: base + (index < remainder)
+            for index, country in enumerate(self.COUNTRIES)
+        }
 
-            for lat in lat_points:
-                for lon in lon_points:
-                    points.append(
-                        GridPoint(
-                            latitude=float(lat), longitude=float(lon), country=country
-                        )
+    def _sample_country(
+        self,
+        country: str,
+        count: int,
+        sequence_offset: int,
+    ) -> list[GridPoint]:
+        if count == 0:
+            return []
+
+        geometry = self.country_geometries[country]
+        min_lon, min_lat, max_lon, max_lat = geometry.bounds
+        selected: list[GridPoint] = []
+        candidate_index = sequence_offset + 1
+        max_attempts = max(10_000, count * 1_000)
+
+        for _ in range(max_attempts):
+            lon_fraction = self._radical_inverse(candidate_index, 2)
+            lat_fraction = self._radical_inverse(candidate_index, 3)
+            longitude = min_lon + lon_fraction * (max_lon - min_lon)
+            latitude = min_lat + lat_fraction * (max_lat - min_lat)
+            candidate_index += 1
+
+            if geometry.covers(Point(longitude, latitude)):
+                selected.append(
+                    GridPoint(
+                        latitude=float(latitude),
+                        longitude=float(longitude),
+                        country=country,
                     )
+                )
+                if len(selected) == count:
+                    return selected
 
-        return points
+        raise RuntimeError(f"Could not generate {count} points inside {country}")
 
-    def _evenly_spaced_subset(self, points: list[GridPoint], n: int) -> list[GridPoint]:
-        if len(points) <= n:
-            return points
-
-        indices = np.linspace(0, len(points) - 1, n, dtype=int)
-        return [points[i] for i in indices]
+    @staticmethod
+    def _radical_inverse(index: int, base: int) -> float:
+        result = 0.0
+        factor = 1.0 / base
+        while index:
+            index, digit = divmod(index, base)
+            result += digit * factor
+            factor /= base
+        return result

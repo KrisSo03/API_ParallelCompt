@@ -44,7 +44,13 @@ htmlcov/
 
 # Project specific
 data/
+!data/
+data/*
+!data/geography/
+!data/geography/README.md
 results/
+sample_results/
+sample_aws_staging/
 outputs/logs/
 outputs/figures/
 outputs/data_quality/
