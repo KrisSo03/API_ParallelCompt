@@ -302,6 +302,10 @@ WORKERS=1,2,4,8 REPEATS=3 MAIN_BASELINE=true \
 Esta es una comparación de motores sobre una entrada AWS idéntica; no afirma
 que el commit `main` tenga integración AWS nativa.
 
+Para reutilizar un staging validado sin volver a descargarlo, establezca
+`DOWNLOAD=false` y conserve el mismo `EXPERIMENT_ID`. Puede dirigir la nueva
+comparación a otra raíz con `RESULTS_DIR`.
+
 La entrada sintética determinista permite medir cómputo sin confundirlo con la
 latencia o disponibilidad de NASA. Para verificar la integración real por
 separado:

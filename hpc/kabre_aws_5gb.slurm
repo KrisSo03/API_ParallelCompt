@@ -24,10 +24,15 @@ WORKERS="${WORKERS:-1,2,4,8}"
 REPEATS="${REPEATS:-1}"
 RESULTS_DIR="${RESULTS_DIR:-${SLURM_SUBMIT_DIR}/results}"
 MAIN_BASELINE="${MAIN_BASELINE:-false}"
+DOWNLOAD="${DOWNLOAD:-true}"
 
 BASELINE_ARGS=()
 if [[ "${MAIN_BASELINE}" == "true" ]]; then
   BASELINE_ARGS+=(--main-baseline)
+fi
+DOWNLOAD_ARGS=()
+if [[ "${DOWNLOAD}" == "true" ]]; then
+  DOWNLOAD_ARGS+=(--download)
 fi
 
 python -m renewable_atlas aws-run \
@@ -42,5 +47,5 @@ python -m renewable_atlas aws-run \
   --repeats "${REPEATS}" \
   --scheduler threads \
   --results-dir "${RESULTS_DIR}" \
-  --download \
+  "${DOWNLOAD_ARGS[@]}" \
   "${BASELINE_ARGS[@]}"
