@@ -143,6 +143,13 @@ Se conservan 18 variables de radiación, viento, temperatura, presión, humedad,
 precipitación y nubosidad. Entre las variables centrales están
 `ALLSKY_SFC_SW_DWN`, `ALLSKY_SFC_SW_DNI`, `WS10M` y `WS50M`.
 
+Las coordenadas no son seleccionadas por NASA POWER: el proyecto genera la
+cantidad total configurada y después consulta el API para cada ubicación. Los
+puntos se reparten de forma equilibrada entre los siete países y se validan
+dentro de sus fronteras con polígonos de Natural Earth 5.1.1. La selección es
+determinista, por lo que una misma cantidad produce las mismas coordenadas. La
+fuente geográfica y su licencia se documentan en `data/geography/README.md`.
+
 La propuesta menciona `WS100M`, pero NASA POWER no la entrega en esta consulta.
 El campo `ws_100m` se estima desde `WS50M` mediante la ley de potencia con
 exponente 1/7. Esta derivación se conserva explícitamente en el código y en la
