@@ -23,6 +23,12 @@ STAGING_ROOT="${STAGING_ROOT:-/data/${USER}/renewable-atlas/aws-staging}"
 WORKERS="${WORKERS:-1,2,4,8}"
 REPEATS="${REPEATS:-1}"
 RESULTS_DIR="${RESULTS_DIR:-${SLURM_SUBMIT_DIR}/results}"
+MAIN_BASELINE="${MAIN_BASELINE:-false}"
+
+BASELINE_ARGS=()
+if [[ "${MAIN_BASELINE}" == "true" ]]; then
+  BASELINE_ARGS+=(--main-baseline)
+fi
 
 python -m renewable_atlas aws-run \
   --experiment-id "${EXPERIMENT_ID}" \
@@ -36,4 +42,5 @@ python -m renewable_atlas aws-run \
   --repeats "${REPEATS}" \
   --scheduler threads \
   --results-dir "${RESULTS_DIR}" \
-  --download
+  --download \
+  "${BASELINE_ARGS[@]}"

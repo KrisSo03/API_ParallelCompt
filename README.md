@@ -288,6 +288,20 @@ Por defecto procesa el mismo staging con 1, 2, 4 y 8 workers. El dashboard
 encontrará `results/nasa-aws-5gb-v1`; cada configuración queda separada y
 `summary.csv` contiene tiempo, memoria, speedup y eficiencia.
 
+Para comparar el comportamiento equivalente a `main` contra la ruta nueva sin
+mezclar fuentes, use `MAIN_BASELINE=true`. La configuración de un worker leerá
+el mismo staging AWS secuencialmente con pandas; 2, 4 y 8 workers usarán Dask.
+`summary.csv` identifica cada fila como `main-sequential` o `aws-dask`:
+
+```bash
+EXPERIMENT_ID=aws-main-vs-dask POINTS=300 TARGET_GIB=0.1 \
+WORKERS=1,2,4,8 REPEATS=3 MAIN_BASELINE=true \
+  sbatch hpc/kabre_aws_5gb.slurm
+```
+
+Esta es una comparación de motores sobre una entrada AWS idéntica; no afirma
+que el commit `main` tenga integración AWS nativa.
+
 La entrada sintética determinista permite medir cómputo sin confundirlo con la
 latencia o disponibilidad de NASA. Para verificar la integración real por
 separado:

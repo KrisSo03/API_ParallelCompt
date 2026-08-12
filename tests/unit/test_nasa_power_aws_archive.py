@@ -16,6 +16,7 @@ from renewable_atlas.infrastructure.nasa_power.aws_archive import (
     POWER_VARIABLES,
     SOLAR_VARIABLES,
     NasaPowerAwsProcessor,
+    NasaPowerAwsSequentialProcessor,
     NasaPowerAwsStager,
 )
 
@@ -111,6 +112,15 @@ def test_processor_keeps_dashboard_indicator_contract(tmp_path):
     assert len(indicators) == 2
     assert "cluster_id" not in indicators
 
+    sequential = NasaPowerAwsSequentialProcessor().process(tmp_path / "stage")
+    pd.testing.assert_frame_equal(
+        indicators.sort_index(axis=1),
+        sequential.sort_index(axis=1),
+        check_exact=False,
+        check_dtype=False,
+        rtol=1e-10,
+    )
+
 
 def test_aws_run_writes_an_experiment_consumed_by_streamlit(tmp_path, monkeypatch):
     staging_dir = tmp_path / "staging"
@@ -153,6 +163,7 @@ def test_aws_run_writes_an_experiment_consumed_by_streamlit(tmp_path, monkeypatc
         workers=2,
         repeat=1,
         scheduler="threads",
+        main_baseline=False,
         settings=settings,
         container=CompositionRoot(settings),
     )

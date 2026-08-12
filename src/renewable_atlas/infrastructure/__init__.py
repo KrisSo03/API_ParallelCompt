@@ -3,6 +3,7 @@ from .clustering import KMeansClusteringStrategy
 from .nasa_power import (
     FakeClimateDataSource,
     NasaPowerAwsProcessor,
+    NasaPowerAwsSequentialProcessor,
     NasaPowerAwsStager,
     NASAPowerDataSource,
     NASAPowerException,
@@ -16,6 +17,7 @@ __all__ = [
     "FakeClimateDataSource",
     "NASAPowerException",
     "NasaPowerAwsProcessor",
+    "NasaPowerAwsSequentialProcessor",
     "NasaPowerAwsStager",
     "ParquetDataRepository",
     "SequentialProcessor",

@@ -24,7 +24,11 @@ from renewable_atlas.infrastructure.benchmarking import (
     compute_speedup,
 )
 from renewable_atlas.infrastructure.grid import SampleGridProvider
-from renewable_atlas.infrastructure.nasa_power import NasaPowerAwsProcessor, NasaPowerAwsStager
+from renewable_atlas.infrastructure.nasa_power import (
+    NasaPowerAwsProcessor,
+    NasaPowerAwsSequentialProcessor,
+    NasaPowerAwsStager,
+)
 from renewable_atlas.infrastructure.reporting import ClusterReporter
 
 logging.basicConfig(
@@ -127,6 +131,11 @@ def main(argv=None):
     aws_run_parser.add_argument("--results-dir", default=None)
     aws_run_parser.add_argument(
         "--scheduler", choices=("threads", "processes"), default="threads"
+    )
+    aws_run_parser.add_argument(
+        "--main-baseline",
+        action="store_true",
+        help="Use pandas sequentially for workers=1 as the main-equivalent AWS baseline",
     )
 
     args = parser.parse_args(argv)
@@ -369,6 +378,7 @@ def _run_aws_command(args, settings, container):
                     workers=workers,
                     repeat=repeat,
                     scheduler=args.scheduler,
+                    main_baseline=args.main_baseline and workers == 1,
                     settings=settings,
                     container=container,
                 )
@@ -387,6 +397,7 @@ def _execute_aws_run(
     workers,
     repeat,
     scheduler,
+    main_baseline,
     settings,
     container,
 ):
@@ -402,11 +413,14 @@ def _execute_aws_run(
     pipeline = container.build_atlas_pipeline(use_fake=False)
 
     try:
-        indicators = NasaPowerAwsProcessor().process(
-            staging_dir,
-            workers=workers,
-            scheduler=scheduler,
-        )
+        if main_baseline:
+            indicators = NasaPowerAwsSequentialProcessor().process(staging_dir)
+        else:
+            indicators = NasaPowerAwsProcessor().process(
+                staging_dir,
+                workers=workers,
+                scheduler=scheduler,
+            )
         labels, profiles = pipeline.cluster(indicators)
         _validate_hpc_result(indicators, labels, point_count)
         dashboard_indicators = indicators.copy()
@@ -437,7 +451,8 @@ def _execute_aws_run(
         "source": "nasa-aws",
         "point_count": point_count,
         "workers": workers,
-        "scheduler": scheduler,
+        "scheduler": "sequential-pandas" if main_baseline else scheduler,
+        "engine": "main-sequential" if main_baseline else "aws-dask",
         "repeat": repeat,
         "aws_staging": staging_manifest,
         "git_commit": _git_commit(),
@@ -454,6 +469,7 @@ def _execute_aws_run(
     return {
         "status": status,
         "workers": workers,
+        "engine": "main-sequential" if main_baseline else "aws-dask",
         "repeat": repeat,
         "elapsed_seconds": elapsed,
         "peak_memory_mb": peak_memory_mb,

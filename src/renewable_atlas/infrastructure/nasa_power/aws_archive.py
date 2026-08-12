@@ -299,3 +299,59 @@ class NasaPowerAwsProcessor:
         indicators["wind_score"] = 0.0
         indicators["hybrid_score"] = 0.0
         return ScoringService().score(indicators).sort_values("point_id").reset_index(drop=True)
+
+
+class NasaPowerAwsSequentialProcessor(NasaPowerAwsProcessor):
+    """Main-equivalent baseline: pandas only, one partition at a time."""
+
+    def process(self, staging_dir: str | Path) -> pd.DataFrame:
+        from renewable_atlas.application.services.scoring_service import ScoringService
+
+        paths = sorted((Path(staging_dir).resolve() / "hourly").glob("year=*/month=*/*.parquet"))
+        if not paths:
+            raise FileNotFoundError(f"No AWS Parquet partitions found in {staging_dir}")
+
+        required = {
+            "point_id",
+            "latitude",
+            "longitude",
+            "country",
+            *self.COLUMN_MAP,
+        }
+        partials = []
+        identities = []
+        for path in paths:
+            frame = pd.read_parquet(path, columns=sorted(required))
+            missing = sorted(required - set(frame.columns))
+            if missing:
+                raise ValueError(f"AWS staging data is missing columns: {', '.join(missing)}")
+            identities.append(
+                frame[["point_id", "latitude", "longitude", "country"]].drop_duplicates()
+            )
+            grouped = frame.groupby("point_id")[list(self.COLUMN_MAP)].agg(["sum", "count"])
+            grouped.columns = [f"{column}__{stat}" for column, stat in grouped.columns]
+            partials.append(grouped)
+
+        totals = pd.concat(partials).groupby(level=0).sum()
+        means = pd.DataFrame(index=totals.index)
+        for source_column in self.COLUMN_MAP:
+            means[source_column] = (
+                totals[f"{source_column}__sum"] / totals[f"{source_column}__count"]
+            )
+        identity_frame = pd.concat(identities).drop_duplicates(subset=["point_id"])
+        indicators = identity_frame.merge(means.reset_index(), on="point_id")
+        indicators = indicators.rename(columns=self.COLUMN_MAP)
+
+        for column in (
+            "sw_dwn_mean",
+            "dni_mean",
+            "sw_diff_mean",
+            "clr_sky_sw_dwn_mean",
+        ):
+            indicators[column] = indicators[column] * 24.0 / 1000.0
+        indicators["prectotcorr_mean"] = indicators["prectotcorr_mean"] * 24.0
+        indicators["ws_100m_mean"] = indicators["ws_50m_mean"] * math.pow(2.0, 0.143)
+        indicators["solar_score"] = 0.0
+        indicators["wind_score"] = 0.0
+        indicators["hybrid_score"] = 0.0
+        return ScoringService().score(indicators).sort_values("point_id").reset_index(drop=True)
