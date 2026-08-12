@@ -227,9 +227,10 @@ Zarr públicos de NASA POWER por HTTPS, por mes y con Dask:
   del pipeline existente.
 
 Los Parquet de staging se guardan fuera de `results`, por defecto en
-`data/aws-staging/<experimento>/hourly`. `--target-gib 5` se refiere al tamaño
-lógico sin comprimir registrado por Parquet; el tamaño físico será menor por
-la compresión Zstandard. El manifiesto registra ambos valores.
+`data/aws-staging/<experimento>/hourly`. `--target-gib` se evalúa contra el
+tamaño lógico sin comprimir por defecto. Use `--size-basis disk` cuando la
+evidencia requiera que los archivos Parquet ocupen realmente ese volumen en
+disco. El manifiesto y el dashboard registran ambos valores.
 
 Para una prueba pequeña local o dentro de un nodo de cómputo:
 
@@ -287,6 +288,21 @@ El script usa `/data/$USER/renewable-atlas/aws-staging` para no llenar el home.
 Por defecto procesa el mismo staging con 1, 2, 4 y 8 workers. El dashboard
 encontrará `results/nasa-aws-5gb-v1`; cada configuración queda separada y
 `summary.csv` contiene tiempo, memoria, speedup y eficiencia.
+
+Para comprobar al menos 1 GiB **físico** con los datos horarios más recientes
+comunes a `syn1deg` y MERRA-2 (hasta 2026-05-30), ejecute:
+
+```bash
+EXPERIMENT_ID=aws-real-1gib-v1 POINTS=300 TARGET_GIB=1 SIZE_BASIS=disk \
+START_DATE=2016-01-01 END_DATE=2026-05-30 WORKERS=1,2,4,8 REPEATS=1 \
+MAIN_BASELINE=true \
+  sbatch --partition=kura --time=1-00:00:00 --mem=32G \
+  hpc/kabre_aws_5gb.slurm
+```
+
+La corrida se detiene al superar 1 GiB en disco y solo continúa al benchmark
+si el manifiesto de staging tiene `status: success`. Streamlit muestra el
+tamaño real, tamaño lógico, filas horarias y cantidad de variables.
 
 Para comparar el comportamiento equivalente a `main` contra la ruta nueva sin
 mezclar fuentes, use `MAIN_BASELINE=true`. La configuración de un worker leerá
