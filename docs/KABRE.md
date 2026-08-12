@@ -120,6 +120,17 @@ variables. El staging conserva las observaciones horarias particionadas por
 año y mes; Dask calcula los indicadores agregados sin cargar los 5 GiB completos
 en memoria.
 
-No use `PUBLISH_RESULTS=true` hasta revisar las salidas bajo
-`.../<experimento>/processed`. La publicación mantiene los nombres y columnas
-que consume Streamlit y no modifica el CSV histórico de benchmarks.
+La corrida escribe un experimento independiente en `results/<experimento>`:
+
+```text
+results/nasa-aws-5gb-v1/
+├── summary.csv
+├── workers-001/run-01/
+│   ├── indicators.parquet
+│   ├── cluster_profiles.json
+│   └── manifest.json
+└── workers-008/run-01/...
+```
+
+Esta estructura es consumida directamente por Streamlit. No reemplaza otros
+experimentos ni modifica `results/benchmark/benchmark_results.csv`.

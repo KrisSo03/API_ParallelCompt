@@ -1,9 +1,15 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from streamlit.testing.v1 import AppTest
 
+from dashboard.data_loader import RunReference, load_run, load_summary
+from renewable_atlas.cli import _add_scaling_metrics, _execute_aws_run
+from renewable_atlas.composition import CompositionRoot
+from renewable_atlas.config import Settings
 from renewable_atlas.infrastructure.nasa_power.aws_archive import (
     METEOROLOGICAL_VARIABLES,
     POWER_VARIABLES,
@@ -99,3 +105,79 @@ def test_processor_keeps_dashboard_indicator_contract(tmp_path):
     assert expected.issubset(indicators.columns)
     assert len(indicators) == 2
     assert "cluster_id" not in indicators
+
+
+def test_aws_run_writes_an_experiment_consumed_by_streamlit(tmp_path, monkeypatch):
+    staging_dir = tmp_path / "staging"
+    hourly = staging_dir / "hourly" / "year=2023" / "month=01"
+    hourly.mkdir(parents=True)
+    rows = []
+    for point_id in range(8):
+        for hour in range(24):
+            row = {
+                "timestamp": pd.Timestamp("2023-01-01") + pd.Timedelta(hours=hour),
+                "date": pd.Timestamp("2023-01-01"),
+                "point_id": point_id,
+                "latitude": 8.0 + point_id * 0.2,
+                "longitude": -85.0 + point_id * 0.2,
+                "country": "Costa Rica" if point_id < 4 else "Panama",
+            }
+            row.update(
+                {
+                    variable: float(index + point_id * 0.5 + hour * 0.01 + 1)
+                    for index, variable in enumerate(POWER_VARIABLES)
+                }
+            )
+            rows.append(row)
+    pd.DataFrame(rows).to_parquet(hourly / "part-000.parquet", index=False)
+
+    staging_manifest = {
+        "status": "success",
+        "source": "NASA POWER AWS Open Data",
+        "variables": list(POWER_VARIABLES),
+        "variable_count": 18,
+        "point_count": 8,
+        "row_count": len(rows),
+    }
+    experiment_dir = tmp_path / "results" / "aws-dashboard"
+    settings = Settings.load()
+    row = _execute_aws_run(
+        staging_dir=staging_dir,
+        staging_manifest=staging_manifest,
+        experiment_dir=experiment_dir,
+        workers=2,
+        repeat=1,
+        scheduler="threads",
+        settings=settings,
+        container=CompositionRoot(settings),
+    )
+    pd.DataFrame(_add_scaling_metrics([row])).to_csv(
+        experiment_dir / "summary.csv", index=False
+    )
+
+    reference = RunReference(
+        workers=2,
+        repeat=1,
+        path=experiment_dir / "workers-002" / "run-01",
+    )
+    loaded = load_run(reference)
+    summary = load_summary(experiment_dir)
+
+    assert len(loaded.indicators) == 8
+    assert loaded.manifest["source"] == "nasa-aws"
+    assert loaded.manifest["aws_staging"]["variable_count"] == 18
+    assert not summary.empty
+    assert summary.loc[0, "workers"] == 2
+
+    monkeypatch.setenv("ATLAS_RESULTS_DIR", str(tmp_path / "results"))
+    app_path = Path(__file__).parents[2] / "dashboard" / "app.py"
+    app = AppTest.from_file(str(app_path)).run(timeout=30)
+
+    assert not app.exception
+    assert [tab.label for tab in app.tabs] == [
+        "Resumen general",
+        "Atlas interactivo",
+        "Comparación",
+        "Calidad y metodología",
+        "Rendimiento",
+    ]

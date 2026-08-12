@@ -20,12 +20,9 @@ TARGET_GIB="${TARGET_GIB:-5}"
 START_DATE="${START_DATE:-2001-01-01}"
 END_DATE="${END_DATE:-2023-12-31}"
 STAGING_ROOT="${STAGING_ROOT:-/data/${USER}/renewable-atlas/aws-staging}"
-PUBLISH_RESULTS="${PUBLISH_RESULTS:-false}"
-
-PUBLISH_ARGS=()
-if [[ "${PUBLISH_RESULTS}" == "true" ]]; then
-  PUBLISH_ARGS+=(--publish-results)
-fi
+WORKERS="${WORKERS:-1,2,4,8}"
+REPEATS="${REPEATS:-1}"
+RESULTS_DIR="${RESULTS_DIR:-${SLURM_SUBMIT_DIR}/results}"
 
 python -m renewable_atlas aws-run \
   --experiment-id "${EXPERIMENT_ID}" \
@@ -35,5 +32,8 @@ python -m renewable_atlas aws-run \
   --target-gib "${TARGET_GIB}" \
   --size-basis logical \
   --staging-root "${STAGING_ROOT}" \
-  --download \
-  "${PUBLISH_ARGS[@]}"
+  --workers "${WORKERS}" \
+  --repeats "${REPEATS}" \
+  --scheduler threads \
+  --results-dir "${RESULTS_DIR}" \
+  --download

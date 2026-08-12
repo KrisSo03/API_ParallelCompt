@@ -240,19 +240,16 @@ python -m renewable_atlas aws-run \
   --start-date 2023-01-01 \
   --end-date 2023-01-07 \
   --target-gib 0.001 \
+  --workers 1,2 \
   --download
 ```
 
-El comando anterior deja sus salidas procesadas junto al staging y **no toca**
-los archivos del dashboard. Después de validar el experimento, agregue
-`--publish-results` para actualizar únicamente:
-
-- `results/cluster_indicators.csv`
-- `results/cluster_profiles.csv`
-
-`results/benchmark/benchmark_results.csv` no se sobrescribe. Se mantienen
-`point_id`, coordenadas, país, los indicadores, scores y `cluster_id`; los
-perfiles conservan etiqueta y descripción.
+Cada ejecución crea un experimento nuevo en `results/<experiment-id>` y no
+reemplaza experimentos anteriores. La estructura incluye `summary.csv` y una
+corrida por configuración bajo `workers-NNN/run-NN`, con `indicators.parquet`,
+`cluster_profiles.json` y `manifest.json`. Es exactamente el contrato que
+descubre Streamlit. Se mantienen `point_id`, coordenadas, país, indicadores,
+scores, `cluster_id`, etiquetas y descripciones.
 
 ## Ejecución en Kabré
 
@@ -287,9 +284,9 @@ EXPERIMENT_ID=nasa-aws-5gb-v1 POINTS=300 TARGET_GIB=5 \
 ```
 
 El script usa `/data/$USER/renewable-atlas/aws-staging` para no llenar el home.
-Deje `PUBLISH_RESULTS=false` durante la validación. Cuando el manifiesto y los
-CSV procesados sean correctos, ejecute una corrida final con
-`PUBLISH_RESULTS=true` o publique manualmente con `aws-run --publish-results`.
+Por defecto procesa el mismo staging con 1, 2, 4 y 8 workers. El dashboard
+encontrará `results/nasa-aws-5gb-v1`; cada configuración queda separada y
+`summary.csv` contiene tiempo, memoria, speedup y eficiencia.
 
 La entrada sintética determinista permite medir cómputo sin confundirlo con la
 latencia o disponibilidad de NASA. Para verificar la integración real por

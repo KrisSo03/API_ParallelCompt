@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from dashboard.atlas_filters import point_label, select_featured_points
 from dashboard.charts import (
     country_comparison_chart,
     davies_bouldin_quality_chart,
@@ -16,10 +17,10 @@ from dashboard.charts import (
     silhouette_quality_chart,
     speedup_chart,
 )
-from dashboard.atlas_filters import point_label, select_featured_points
 from dashboard.config import (
     APP_TITLE,
     CLUSTER_LABELS,
+    METRICS,
     discover_experiments,
     results_root,
 )

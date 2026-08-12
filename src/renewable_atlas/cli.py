@@ -122,10 +122,11 @@ def main(argv=None):
         action="store_true",
         help="Download AWS partitions before processing them",
     )
+    aws_run_parser.add_argument("--workers", default="1", help="Comma-separated worker counts")
+    aws_run_parser.add_argument("--repeats", type=int, default=1)
+    aws_run_parser.add_argument("--results-dir", default=None)
     aws_run_parser.add_argument(
-        "--publish-results",
-        action="store_true",
-        help="Replace the fixed cluster CSV outputs consumed by Streamlit",
+        "--scheduler", choices=("threads", "processes"), default="threads"
     )
 
     args = parser.parse_args(argv)
@@ -346,35 +347,120 @@ def _run_aws_command(args, settings, container):
             f"No staged dataset found at {staging_dir}; run aws-stage or use --download"
         )
 
-    indicators = NasaPowerAwsProcessor().process(staging_dir)
-    pipeline = container.build_atlas_pipeline(use_fake=False)
-    labels, profiles = pipeline.cluster(indicators)
-    experiment_results = staging_dir / "processed"
-    _save_cluster_results(indicators, labels, profiles, experiment_results)
+    if args.repeats < 1:
+        raise ValueError("--repeats must be at least 1")
+    worker_counts = _worker_counts(args.workers, [1])
+    experiment_dir = Path(args.results_dir or settings.paths.results_dir).resolve() / experiment_id
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+    staging_manifest = json.loads((staging_dir / "manifest.json").read_text(encoding="utf-8"))
+    if staging_manifest.get("status") != "success":
+        raise RuntimeError(
+            "AWS staging did not reach the requested size; inspect its manifest "
+            "and use a wider date range or a smaller target"
+        )
+    rows = []
+    for workers in worker_counts:
+        for repeat in range(1, args.repeats + 1):
+            rows.append(
+                _execute_aws_run(
+                    staging_dir=staging_dir,
+                    staging_manifest=staging_manifest,
+                    experiment_dir=experiment_dir,
+                    workers=workers,
+                    repeat=repeat,
+                    scheduler=args.scheduler,
+                    settings=settings,
+                    container=container,
+                )
+            )
 
-    if args.publish_results:
-        fixed_results = Path(settings.paths.results_dir)
-        _save_cluster_results(indicators, labels, profiles, fixed_results)
-        logger.info(
-            "Published Streamlit-compatible outputs without changing filenames or columns: %s",
-            fixed_results,
-        )
-    else:
-        logger.info(
-            "Processed outputs saved under %s; fixed Streamlit results were not changed",
-            experiment_results,
-        )
+    rows = _add_scaling_metrics(rows)
+    pd.DataFrame(rows).to_csv(experiment_dir / "summary.csv", index=False)
+    logger.info("Streamlit-compatible AWS experiment completed: %s", experiment_dir)
     return 0
 
 
-def _save_cluster_results(indicators, labels, profiles, output_dir):
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    reporter = ClusterReporter(indicators, labels, profiles)
-    reporter.save_csv(output_dir / "cluster_indicators.csv")
-    reporter.save_parquet(output_dir / "cluster_indicators.parquet")
-    reporter.save_cluster_profiles(output_dir / "cluster_profiles.csv")
-    reporter.save_summary(output_dir)
+def _execute_aws_run(
+    staging_dir,
+    staging_manifest,
+    experiment_dir,
+    workers,
+    repeat,
+    scheduler,
+    settings,
+    container,
+):
+    run_dir = experiment_dir / f"workers-{workers:03d}" / f"run-{repeat:02d}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    started_at = datetime.now(UTC)
+    memory_sampler = ProcessTreeMemorySampler()
+    memory_sampler.start()
+    started = time.perf_counter()
+    status = "failed"
+    error = None
+    point_count = int(staging_manifest["point_count"])
+    pipeline = container.build_atlas_pipeline(use_fake=False)
+
+    try:
+        indicators = NasaPowerAwsProcessor().process(
+            staging_dir,
+            workers=workers,
+            scheduler=scheduler,
+        )
+        labels, profiles = pipeline.cluster(indicators)
+        _validate_hpc_result(indicators, labels, point_count)
+        dashboard_indicators = indicators.copy()
+        dashboard_indicators["cluster_id"] = labels
+        dashboard_indicators.to_parquet(run_dir / "indicators.parquet", index=False)
+        (run_dir / "cluster_profiles.json").write_text(
+            json.dumps([asdict(profile) for profile in profiles], indent=2),
+            encoding="utf-8",
+        )
+        status = "success"
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        logger.exception("AWS processing run failed")
+
+    elapsed = time.perf_counter() - started
+    peak_memory_mb = memory_sampler.stop()
+    quality_report = pipeline.clustering_service.last_quality_report
+    manifest = {
+        "status": status,
+        "error": error,
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": datetime.now(UTC).isoformat(),
+        "elapsed_seconds": elapsed,
+        "peak_memory_mb": peak_memory_mb,
+        "memory_scope": (
+            "process_tree" if memory_sampler.includes_children else "coordinator_only"
+        ),
+        "source": "nasa-aws",
+        "point_count": point_count,
+        "workers": workers,
+        "scheduler": scheduler,
+        "repeat": repeat,
+        "aws_staging": staging_manifest,
+        "git_commit": _git_commit(),
+        "hostname": socket.gethostname(),
+        "slurm_job_id": os.getenv("SLURM_JOB_ID"),
+        "python": sys.version,
+        "platform": platform.platform(),
+        "settings": settings.snapshot(),
+        "clustering_quality": asdict(quality_report) if quality_report else None,
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    if status == "failed":
+        raise RuntimeError(f"AWS experiment failed; inspect {run_dir / 'manifest.json'}")
+    return {
+        "status": status,
+        "workers": workers,
+        "repeat": repeat,
+        "elapsed_seconds": elapsed,
+        "peak_memory_mb": peak_memory_mb,
+        "point_count": point_count,
+        "run_dir": str(run_dir),
+        "error": error,
+    }
 
 
 def _run_hpc_command(args, settings, container):

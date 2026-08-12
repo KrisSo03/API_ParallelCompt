@@ -149,7 +149,7 @@ def renewable_map(
         "lat": float(plot_data["latitude"].mean()),
         "lon": float(plot_data["longitude"].mean()),
     }
-    figure = px.scatter_mapbox(
+    figure = px.scatter_map(
         plot_data,
         lat="latitude",
         lon="longitude",
@@ -182,11 +182,11 @@ def renewable_map(
         if not selected.empty:
             row = selected.iloc[0]
             figure.update_layout(
-                mapbox_center={"lat": float(row["latitude"]), "lon": float(row["longitude"])},
-                mapbox_zoom=7,
+                map_center={"lat": float(row["latitude"]), "lon": float(row["longitude"])},
+                map_zoom=7,
             )
             figure.add_trace(
-                go.Scattermapbox(
+                go.Scattermap(
                     lat=[row["latitude"]],
                     lon=[row["longitude"]],
                     mode="markers",
@@ -196,7 +196,7 @@ def renewable_map(
                 )
             )
             figure.add_trace(
-                go.Scattermapbox(
+                go.Scattermap(
                     lat=[row["latitude"]],
                     lon=[row["longitude"]],
                     mode="markers",
@@ -207,7 +207,7 @@ def renewable_map(
                 )
             )
     figure.update_layout(
-        mapbox_style="carto-positron",
+        map_style="carto-positron",
         margin=dict(l=0, r=0, t=10, b=0),
         legend_title_text="Perfil energético",
         legend=dict(

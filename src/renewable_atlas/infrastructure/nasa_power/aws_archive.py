@@ -250,8 +250,18 @@ class NasaPowerAwsProcessor:
         "CLOUD_AMT": "cloud_amt_mean",
     }
 
-    def process(self, staging_dir: str | Path) -> pd.DataFrame:
+    def process(
+        self,
+        staging_dir: str | Path,
+        workers: int = 1,
+        scheduler: str = "threads",
+    ) -> pd.DataFrame:
         from renewable_atlas.application.services.scoring_service import ScoringService
+
+        if workers < 1:
+            raise ValueError("workers must be at least 1")
+        if scheduler not in {"threads", "processes"}:
+            raise ValueError("scheduler must be 'threads' or 'processes'")
 
         source = str(Path(staging_dir).resolve() / "hourly" / "year=*" / "month=*" / "*.parquet")
         frame = dd.read_parquet(source, engine="pyarrow")
@@ -268,7 +278,10 @@ class NasaPowerAwsProcessor:
 
         identities = frame[["point_id", "latitude", "longitude", "country"]].drop_duplicates()
         means = frame[["point_id", *self.COLUMN_MAP]].groupby("point_id").mean()
-        indicators = identities.merge(means.reset_index(), on="point_id").compute()
+        indicators = identities.merge(means.reset_index(), on="point_id").compute(
+            scheduler=scheduler,
+            num_workers=workers,
+        )
         indicators = indicators.rename(columns=self.COLUMN_MAP)
 
         # Convert mean hourly irradiance (W/m²) to mean daily energy (kWh/m²/day),
