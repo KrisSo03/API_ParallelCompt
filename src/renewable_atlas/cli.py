@@ -361,12 +361,14 @@ def _run_aws_command(args, settings, container):
     worker_counts = _worker_counts(args.workers, [1])
     experiment_dir = Path(args.results_dir or settings.paths.results_dir).resolve() / experiment_id
     experiment_dir.mkdir(parents=True, exist_ok=True)
-    staging_manifest = json.loads((staging_dir / "manifest.json").read_text(encoding="utf-8"))
-    if staging_manifest.get("status") != "success":
-        raise RuntimeError(
-            "AWS staging did not reach the requested size; inspect its manifest "
-            "and use a wider date range or a smaller target"
-        )
+    stored_manifest = json.loads(
+        (staging_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    staging_manifest = _revalidate_aws_staging(
+        stored_manifest,
+        target_gib=args.target_gib,
+        size_basis=args.size_basis,
+    )
     rows = []
     for workers in worker_counts:
         for repeat in range(1, args.repeats + 1):
@@ -388,6 +390,40 @@ def _run_aws_command(args, settings, container):
     pd.DataFrame(rows).to_csv(experiment_dir / "summary.csv", index=False)
     logger.info("Streamlit-compatible AWS experiment completed: %s", experiment_dir)
     return 0
+
+
+def _revalidate_aws_staging(manifest, target_gib, size_basis):
+    """Validate an existing staging against the target of the current run.
+
+    The stored manifest remains unchanged.  The returned copy records both
+    the original request and the smaller target accepted for this run, so a
+    complete dataset can be reused without falsifying its download history.
+    """
+    size_key = {
+        "logical": "logical_uncompressed_gib",
+        "disk": "disk_gib",
+    }[size_basis]
+    measured_gib = float(manifest.get(size_key, 0) or 0)
+    if measured_gib < target_gib:
+        raise RuntimeError(
+            "AWS staging does not satisfy the current target: "
+            f"{measured_gib:.3f} GiB {size_basis} available, "
+            f"{target_gib:.3f} GiB requested"
+        )
+
+    validated = dict(manifest)
+    validated.update(
+        {
+            "status": "success",
+            "original_status": manifest.get("status"),
+            "original_target_gib": manifest.get("target_gib"),
+            "original_size_basis": manifest.get("size_basis"),
+            "target_gib": target_gib,
+            "size_basis": size_basis,
+            "reused_existing_staging": True,
+        }
+    )
+    return validated
 
 
 def _execute_aws_run(

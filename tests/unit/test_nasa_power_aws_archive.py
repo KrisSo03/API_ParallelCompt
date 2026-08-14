@@ -8,7 +8,11 @@ from fsspec.registry import get_filesystem_class
 from streamlit.testing.v1 import AppTest
 
 from dashboard.data_loader import RunReference, load_run, load_summary
-from renewable_atlas.cli import _add_scaling_metrics, _execute_aws_run
+from renewable_atlas.cli import (
+    _add_scaling_metrics,
+    _execute_aws_run,
+    _revalidate_aws_staging,
+)
 from renewable_atlas.composition import CompositionRoot
 from renewable_atlas.config import Settings
 from renewable_atlas.infrastructure.nasa_power.aws_archive import (
@@ -30,6 +34,26 @@ class Point:
 
 def test_http_filesystem_runtime_dependency_is_available():
     assert get_filesystem_class("https").__name__ == "HTTPFileSystem"
+
+
+def test_partial_staging_can_be_revalidated_against_a_smaller_target():
+    stored = {
+        "status": "partial",
+        "target_gib": 3.0,
+        "size_basis": "logical",
+        "logical_uncompressed_gib": 1.5802,
+        "disk_gib": 0.8596,
+    }
+
+    validated = _revalidate_aws_staging(stored, 1.5, "logical")
+
+    assert stored["status"] == "partial"
+    assert stored["target_gib"] == 3.0
+    assert validated["status"] == "success"
+    assert validated["original_status"] == "partial"
+    assert validated["original_target_gib"] == 3.0
+    assert validated["target_gib"] == 1.5
+    assert validated["reused_existing_staging"] is True
 
 
 def _dataset(variables):
