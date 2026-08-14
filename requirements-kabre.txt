@@ -17,5 +17,6 @@ streamlit==1.61.1
 tenacity==9.0.0
 python-dotenv==1.0.1
 psutil==6.1.1
+shapely==2.0.6
 pytest==9.1.1
 ruff==0.16.2
