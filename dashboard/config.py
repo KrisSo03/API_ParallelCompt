@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 APP_TITLE = "Atlas de Energía Renovable"
 APP_SUBTITLE = "Potencial solar, eólico e híbrido de Centroamérica"
 RESULTS_ENV_VAR = "ATLAS_RESULTS_DIR"

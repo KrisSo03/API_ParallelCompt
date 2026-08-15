@@ -78,6 +78,7 @@ class BenchmarkSettings(BaseSettings):
 
 class PathSettings(BaseSettings):
     data_dir: str = Field(default="./data")
+    aws_staging_dir: str = Field(default="./data/aws-staging")
     results_dir: str = Field(default="./results")
     logs_dir: str = Field(default="./outputs/logs")
 

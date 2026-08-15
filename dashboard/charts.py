@@ -109,7 +109,13 @@ def renewable_map(
         plot_data["Valor del perfil"] = plot_data[metric]
     plot_data["Tamaño"] = plot_data["Valor del perfil"].fillna(0).clip(lower=0) + 0.08
     plot_data["Potencial visible"] = (
-        plot_data["Valor del perfil"].fillna(0).clip(lower=0, upper=1).mul(100).round().astype(int).astype(str)
+        plot_data["Valor del perfil"]
+        .fillna(0)
+        .clip(lower=0, upper=1)
+        .mul(100)
+        .round()
+        .astype(int)
+        .astype(str)
         + "%"
     )
     plot_data["Punto"] = plot_data["point_id"].astype(int)
@@ -143,7 +149,7 @@ def renewable_map(
         "lat": float(plot_data["latitude"].mean()),
         "lon": float(plot_data["longitude"].mean()),
     }
-    figure = px.scatter_mapbox(
+    figure = px.scatter_map(
         plot_data,
         lat="latitude",
         lon="longitude",
@@ -176,11 +182,11 @@ def renewable_map(
         if not selected.empty:
             row = selected.iloc[0]
             figure.update_layout(
-                mapbox_center={"lat": float(row["latitude"]), "lon": float(row["longitude"])},
-                mapbox_zoom=7,
+                map_center={"lat": float(row["latitude"]), "lon": float(row["longitude"])},
+                map_zoom=7,
             )
             figure.add_trace(
-                go.Scattermapbox(
+                go.Scattermap(
                     lat=[row["latitude"]],
                     lon=[row["longitude"]],
                     mode="markers",
@@ -190,7 +196,7 @@ def renewable_map(
                 )
             )
             figure.add_trace(
-                go.Scattermapbox(
+                go.Scattermap(
                     lat=[row["latitude"]],
                     lon=[row["longitude"]],
                     mode="markers",
@@ -201,7 +207,7 @@ def renewable_map(
                 )
             )
     figure.update_layout(
-        mapbox_style="carto-positron",
+        map_style="carto-positron",
         margin=dict(l=0, r=0, t=10, b=0),
         legend_title_text="Perfil energético",
         legend=dict(

@@ -24,6 +24,11 @@ from renewable_atlas.infrastructure.benchmarking import (
     compute_speedup,
 )
 from renewable_atlas.infrastructure.grid import SampleGridProvider
+from renewable_atlas.infrastructure.nasa_power import (
+    NasaPowerAwsProcessor,
+    NasaPowerAwsSequentialProcessor,
+    NasaPowerAwsStager,
+)
 from renewable_atlas.infrastructure.reporting import ClusterReporter
 
 logging.basicConfig(
@@ -107,6 +112,32 @@ def main(argv=None):
         "--workers", default=None, help="Comma-separated worker counts"
     )
 
+    aws_stage_parser = subparsers.add_parser(
+        "aws-stage", help="Stage a large NASA POWER dataset from public AWS Zarr archives"
+    )
+    _add_aws_arguments(aws_stage_parser)
+
+    aws_run_parser = subparsers.add_parser(
+        "aws-run", help="Process staged NASA POWER AWS data with Dask"
+    )
+    _add_aws_arguments(aws_run_parser)
+    aws_run_parser.add_argument(
+        "--download",
+        action="store_true",
+        help="Download AWS partitions before processing them",
+    )
+    aws_run_parser.add_argument("--workers", default="1", help="Comma-separated worker counts")
+    aws_run_parser.add_argument("--repeats", type=int, default=1)
+    aws_run_parser.add_argument("--results-dir", default=None)
+    aws_run_parser.add_argument(
+        "--scheduler", choices=("threads", "processes"), default="threads"
+    )
+    aws_run_parser.add_argument(
+        "--main-baseline",
+        action="store_true",
+        help="Use pandas sequentially for workers=1 as the main-equivalent AWS baseline",
+    )
+
     args = parser.parse_args(argv)
 
     def build_processor(workers: int):
@@ -123,6 +154,9 @@ def main(argv=None):
 
     if args.command in {"hpc-run", "hpc-benchmark"}:
         return _run_hpc_command(args, settings, container)
+
+    if args.command in {"aws-stage", "aws-run"}:
+        return _run_aws_command(args, settings, container)
 
     grid_provider = SampleGridProvider(
         size=settings.grid.size,
@@ -273,6 +307,256 @@ def _add_hpc_arguments(parser):
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--results-dir", default=None)
     parser.add_argument("--scheduler", choices=("processes", "threads"), default="processes")
+
+
+def _add_aws_arguments(parser):
+    parser.add_argument("--experiment-id", required=True)
+    parser.add_argument("--points", type=int, default=None)
+    parser.add_argument("--start-date", default=None, help="Inclusive date, YYYY-MM-DD")
+    parser.add_argument("--end-date", default=None, help="Inclusive date, YYYY-MM-DD")
+    parser.add_argument("--target-gib", type=float, default=5.0)
+    parser.add_argument("--size-basis", choices=("logical", "disk"), default="logical")
+    parser.add_argument(
+        "--full-date-range",
+        action="store_true",
+        help=(
+            "Process the complete requested date range (up to the latest data "
+            "available from NASA) instead of stopping at --target-gib"
+        ),
+    )
+    parser.add_argument("--staging-root", default=None)
+
+
+def _run_aws_command(args, settings, container):
+    experiment_id = _safe_experiment_id(args.experiment_id)
+    point_count = args.points or settings.grid.sample_size
+    points = SampleGridProvider(
+        size=max(settings.grid.size, point_count),
+        enable_sampling=True,
+        sample_size=point_count,
+    ).generate()
+    staging_root = Path(args.staging_root or settings.paths.aws_staging_dir).resolve()
+    staging_dir = staging_root / experiment_id
+    start_date = args.start_date or f"{settings.date_range.start_year}-01-01"
+    end_date = args.end_date or f"{settings.date_range.end_year}-12-31"
+
+    if args.command == "aws-stage" or args.download:
+        manifest = NasaPowerAwsStager().stage(
+            points=points,
+            output_dir=staging_dir,
+            start_date=start_date,
+            end_date=end_date,
+            target_gib=args.target_gib,
+            size_basis=args.size_basis,
+            full_date_range=args.full_date_range,
+        )
+        logger.info(
+            "AWS staging completed: %s rows, %.3f GiB logical, %.3f GiB on disk",
+            manifest["row_count"],
+            manifest["logical_uncompressed_gib"],
+            manifest["disk_gib"],
+        )
+
+    if args.command == "aws-stage":
+        return 0
+
+    if not (staging_dir / "manifest.json").exists():
+        raise FileNotFoundError(
+            f"No staged dataset found at {staging_dir}; run aws-stage or use --download"
+        )
+
+    if args.repeats < 1:
+        raise ValueError("--repeats must be at least 1")
+    worker_counts = _worker_counts(args.workers, [1])
+    experiment_dir = Path(args.results_dir or settings.paths.results_dir).resolve() / experiment_id
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+    stored_manifest = json.loads(
+        (staging_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    staging_manifest = _revalidate_aws_staging(
+        stored_manifest,
+        target_gib=args.target_gib,
+        size_basis=args.size_basis,
+        full_date_range=args.full_date_range,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    rows = []
+    for workers in worker_counts:
+        for repeat in range(1, args.repeats + 1):
+            rows.append(
+                _execute_aws_run(
+                    staging_dir=staging_dir,
+                    staging_manifest=staging_manifest,
+                    experiment_dir=experiment_dir,
+                    workers=workers,
+                    repeat=repeat,
+                    scheduler=args.scheduler,
+                    main_baseline=args.main_baseline and workers == 1,
+                    settings=settings,
+                    container=container,
+                )
+            )
+
+    rows = _add_scaling_metrics(rows)
+    pd.DataFrame(rows).to_csv(experiment_dir / "summary.csv", index=False)
+    logger.info("Streamlit-compatible AWS experiment completed: %s", experiment_dir)
+    return 0
+
+
+def _revalidate_aws_staging(
+    manifest,
+    target_gib,
+    size_basis,
+    full_date_range=False,
+    start_date=None,
+    end_date=None,
+):
+    """Validate an existing staging against the mode of the current run.
+
+    A size-bounded run checks its requested GiB threshold. A full-range run
+    requires an explicitly completed date-range staging with matching dates.
+    The stored manifest remains unchanged.
+    """
+    if full_date_range:
+        if manifest.get("staging_mode") != "full-date-range":
+            raise RuntimeError(
+                "AWS staging was not created in full-date-range mode; "
+                "download it again with --full-date-range"
+            )
+        requested_start = pd.Timestamp(start_date).isoformat()
+        requested_end = pd.Timestamp(end_date).isoformat()
+        if (
+            manifest.get("requested_start_date") != requested_start
+            or manifest.get("requested_end_date") != requested_end
+        ):
+            raise RuntimeError(
+                "AWS staging date range does not match the current request: "
+                f"stored {manifest.get('requested_start_date')} to "
+                f"{manifest.get('requested_end_date')}, requested "
+                f"{requested_start} to {requested_end}"
+            )
+        if manifest.get("status") != "success":
+            raise RuntimeError("AWS full-date-range staging is not complete")
+
+        validated = dict(manifest)
+        validated["reused_existing_staging"] = True
+        return validated
+
+    size_key = {
+        "logical": "logical_uncompressed_gib",
+        "disk": "disk_gib",
+    }[size_basis]
+    measured_gib = float(manifest.get(size_key, 0) or 0)
+    if measured_gib < target_gib:
+        raise RuntimeError(
+            "AWS staging does not satisfy the current target: "
+            f"{measured_gib:.3f} GiB {size_basis} available, "
+            f"{target_gib:.3f} GiB requested"
+        )
+
+    validated = dict(manifest)
+    validated.update(
+        {
+            "status": "success",
+            "original_status": manifest.get("status"),
+            "original_target_gib": manifest.get("target_gib"),
+            "original_size_basis": manifest.get("size_basis"),
+            "target_gib": target_gib,
+            "size_basis": size_basis,
+            "reused_existing_staging": True,
+        }
+    )
+    return validated
+
+
+def _execute_aws_run(
+    staging_dir,
+    staging_manifest,
+    experiment_dir,
+    workers,
+    repeat,
+    scheduler,
+    main_baseline,
+    settings,
+    container,
+):
+    run_dir = experiment_dir / f"workers-{workers:03d}" / f"run-{repeat:02d}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    started_at = datetime.now(UTC)
+    memory_sampler = ProcessTreeMemorySampler()
+    memory_sampler.start()
+    started = time.perf_counter()
+    status = "failed"
+    error = None
+    point_count = int(staging_manifest["point_count"])
+    pipeline = container.build_atlas_pipeline(use_fake=False)
+
+    try:
+        if main_baseline:
+            indicators = NasaPowerAwsSequentialProcessor().process(staging_dir)
+        else:
+            indicators = NasaPowerAwsProcessor().process(
+                staging_dir,
+                workers=workers,
+                scheduler=scheduler,
+            )
+        labels, profiles = pipeline.cluster(indicators)
+        _validate_hpc_result(indicators, labels, point_count)
+        dashboard_indicators = indicators.copy()
+        dashboard_indicators["cluster_id"] = labels
+        dashboard_indicators.to_parquet(run_dir / "indicators.parquet", index=False)
+        (run_dir / "cluster_profiles.json").write_text(
+            json.dumps([asdict(profile) for profile in profiles], indent=2),
+            encoding="utf-8",
+        )
+        status = "success"
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        logger.exception("AWS processing run failed")
+
+    elapsed = time.perf_counter() - started
+    peak_memory_mb = memory_sampler.stop()
+    quality_report = pipeline.clustering_service.last_quality_report
+    manifest = {
+        "status": status,
+        "error": error,
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": datetime.now(UTC).isoformat(),
+        "elapsed_seconds": elapsed,
+        "peak_memory_mb": peak_memory_mb,
+        "memory_scope": (
+            "process_tree" if memory_sampler.includes_children else "coordinator_only"
+        ),
+        "source": "nasa-aws",
+        "point_count": point_count,
+        "workers": workers,
+        "scheduler": "sequential-pandas" if main_baseline else scheduler,
+        "engine": "main-sequential" if main_baseline else "aws-dask",
+        "repeat": repeat,
+        "aws_staging": staging_manifest,
+        "git_commit": _git_commit(),
+        "hostname": socket.gethostname(),
+        "slurm_job_id": os.getenv("SLURM_JOB_ID"),
+        "python": sys.version,
+        "platform": platform.platform(),
+        "settings": settings.snapshot(),
+        "clustering_quality": asdict(quality_report) if quality_report else None,
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    if status == "failed":
+        raise RuntimeError(f"AWS experiment failed; inspect {run_dir / 'manifest.json'}")
+    return {
+        "status": status,
+        "workers": workers,
+        "engine": "main-sequential" if main_baseline else "aws-dask",
+        "repeat": repeat,
+        "elapsed_seconds": elapsed,
+        "peak_memory_mb": peak_memory_mb,
+        "point_count": point_count,
+        "run_dir": str(run_dir),
+        "error": error,
+    }
 
 
 def _run_hpc_command(args, settings, container):

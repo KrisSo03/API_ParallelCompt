@@ -223,6 +223,54 @@ Para poder comparar dos experimentos deben coincidir como mínimo:
 | Recursos | Workers, scheduler, CPUs, memoria y partición Slurm |
 | Repeticiones | Mismo número y fuente de datos |
 
+## Dataset masivo desde NASA POWER en AWS
+
+La ruta masiva no hace miles de solicitudes al Point API. Lee los archivos
+Zarr públicos de NASA POWER por HTTPS, por mes y con Dask:
+
+- `syn1deg`: 6 variables solares y nubosidad.
+- `merra2`: 10 variables meteorológicas horarias.
+- `T2M_MAX` y `T2M_MIN`: derivadas de `T2M` para conservar las 18 variables
+  del pipeline existente.
+
+Los Parquet de staging se guardan fuera de `results`, por defecto en
+`data/aws-staging/<experimento>/hourly`. `--target-gib` se evalúa contra el
+tamaño lógico sin comprimir por defecto. Use `--size-basis disk` cuando la
+evidencia requiera que los archivos Parquet ocupen realmente ese volumen en
+disco. El manifiesto y el dashboard registran ambos valores.
+
+Existen dos modalidades de staging:
+
+- Por volumen (predeterminada): se detiene cuando alcanza `--target-gib`.
+- Por fechas: `--full-date-range` ignora el límite de GiB y recorre todo el
+  intervalo solicitado, hasta la última observación que NASA tenga disponible.
+
+El manifiesto distingue ambas modalidades mediante `staging_mode`. En modo de
+rango completo, `target_gib` queda en `null` y se registran
+`requested_start_date`, `requested_end_date`, `first_timestamp` y
+`last_timestamp`. Use un identificador de experimento nuevo al cambiar de
+modalidad; un staging limitado por volumen no se acepta como rango completo.
+
+Para una prueba pequeña local o dentro de un nodo de cómputo:
+
+```bash
+python -m renewable_atlas aws-run \
+  --experiment-id aws-smoke \
+  --points 8 \
+  --start-date 2023-01-01 \
+  --end-date 2023-01-07 \
+  --target-gib 0.001 \
+  --workers 1,2 \
+  --download
+```
+
+Cada ejecución crea un experimento nuevo en `results/<experiment-id>` y no
+reemplaza experimentos anteriores. La estructura incluye `summary.csv` y una
+corrida por configuración bajo `workers-NNN/run-NN`, con `indicators.parquet`,
+`cluster_profiles.json` y `manifest.json`. Es exactamente el contrato que
+descubre Streamlit. Se mantienen `point_id`, coordenadas, país, indicadores,
+scores, `cluster_id`, etiquetas y descripciones.
+
 ## Ejecución en Kabré
 
 No ejecute instalaciones, pruebas, descargas ni el pipeline en los nodos
@@ -243,6 +291,72 @@ EXPERIMENT_ID=smoke-kabre POINTS=8 REPEATS=1 WORKERS=1,2 \
 EXPERIMENT_ID=kabre-carga-300 POINTS=300 REPEATS=3 \
   sbatch hpc/kabre_benchmark.slurm
 ```
+
+### Dataset AWS de aproximadamente 5 GiB
+
+La descarga y el procesamiento deben enviarse a Slurm; no ejecute este comando
+directamente en `login`:
+
+```bash
+mkdir -p outputs/slurm
+EXPERIMENT_ID=nasa-aws-5gb-v1 POINTS=300 TARGET_GIB=5 \
+  sbatch hpc/kabre_aws_5gb.slurm
+```
+
+El script usa `/data/$USER/renewable-atlas/aws-staging` para no llenar el home.
+Por defecto procesa el mismo staging con 1, 2, 4 y 8 workers. El dashboard
+encontrará `results/nasa-aws-5gb-v1`; cada configuración queda separada y
+`summary.csv` contiene tiempo, memoria, speedup y eficiencia.
+
+Para comprobar al menos 1 GiB **físico** con los datos horarios más recientes
+comunes a `syn1deg` y MERRA-2 (hasta 2026-05-30), ejecute:
+
+```bash
+EXPERIMENT_ID=aws-real-1gib-v1 POINTS=300 TARGET_GIB=1 SIZE_BASIS=disk \
+START_DATE=2016-01-01 END_DATE=2026-05-30 WORKERS=1,2,4,8 REPEATS=1 \
+MAIN_BASELINE=true \
+  sbatch --partition=kura --time=1-00:00:00 --mem=32G \
+  hpc/kabre_aws_5gb.slurm
+```
+
+La corrida se detiene al superar 1 GiB en disco y solo continúa al benchmark
+si el manifiesto de staging tiene `status: success`. Streamlit muestra el
+tamaño real, tamaño lógico, filas horarias y cantidad de variables.
+
+Para procesar 300 puntos durante todo el periodo solicitado, sin detenerse al
+alcanzar un volumen, use la modalidad por fechas:
+
+```bash
+EXPERIMENT_ID=aws-geographic-300-full-range-v1 POINTS=300 \
+START_DATE=2001-01-01 END_DATE=2026-08-14 FULL_DATE_RANGE=true \
+WORKERS=1,2,4,8 REPEATS=3 \
+  sbatch --partition=kura-debug --time=07:00:00 \
+  hpc/kabre_aws_5gb.slurm
+```
+
+La fecha final debe ajustarse al día de la prueba. Si NASA todavía no ofrece
+datos para todo el intervalo, el staging conserva lo disponible y el
+manifiesto permite comparar `requested_end_date` con `last_timestamp`. El modo
+por fechas puede reutilizarse con `DOWNLOAD=false` únicamente si las fechas
+solicitadas coinciden con las registradas originalmente.
+
+Para comparar el comportamiento equivalente a `main` contra la ruta nueva sin
+mezclar fuentes, use `MAIN_BASELINE=true`. La configuración de un worker leerá
+el mismo staging AWS secuencialmente con pandas; 2, 4 y 8 workers usarán Dask.
+`summary.csv` identifica cada fila como `main-sequential` o `aws-dask`:
+
+```bash
+EXPERIMENT_ID=aws-main-vs-dask POINTS=300 TARGET_GIB=0.1 \
+WORKERS=1,2,4,8 REPEATS=3 MAIN_BASELINE=true \
+  sbatch hpc/kabre_aws_5gb.slurm
+```
+
+Esta es una comparación de motores sobre una entrada AWS idéntica; no afirma
+que el commit `main` tenga integración AWS nativa.
+
+Para reutilizar un staging validado sin volver a descargarlo, establezca
+`DOWNLOAD=false` y conserve el mismo `EXPERIMENT_ID`. Puede dirigir la nueva
+comparación a otra raíz con `RESULTS_DIR`.
 
 La entrada sintética determinista permite medir cómputo sin confundirlo con la
 latencia o disponibilidad de NASA. Para verificar la integración real por
@@ -347,8 +461,8 @@ git diff --check
 - La resolución espacial y los valores provienen de NASA POWER, no de sensores
   instalados en cada punto.
 - `ws_100m` es una estimación, no una observación directa.
-- La descarga aún no está paralelizada; los benchmarks aíslan principalmente
-  limpieza, validación y cálculo de indicadores.
+- La ruta Point API descarga secuencialmente. La ruta AWS lee por bloques
+  mensuales y procesa el staging con Dask.
 - El atlas identifica potencial climático y no sustituye estudios técnicos,
   ambientales, económicos o de conexión eléctrica.
 - Los resultados definitivos de escalabilidad deben ejecutarse y documentarse

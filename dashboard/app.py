@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from dashboard.atlas_filters import point_label, select_featured_points
 from dashboard.charts import (
     country_comparison_chart,
     davies_bouldin_quality_chart,
@@ -16,7 +17,6 @@ from dashboard.charts import (
     silhouette_quality_chart,
     speedup_chart,
 )
-from dashboard.atlas_filters import point_label, select_featured_points
 from dashboard.config import (
     APP_TITLE,
     CLUSTER_LABELS,
@@ -33,7 +33,6 @@ from dashboard.metrics import (
 )
 from dashboard.styles import APP_CSS
 from dashboard.validators import DashboardDataError
-
 
 ALL_COUNTRIES = "Todos los países"
 ALL_PROFILES = "Todos los perfiles"
@@ -128,6 +127,35 @@ with summary_tab:
     cards[3].metric("Índice híbrido relativo", f"{hybrid.average_score:.1%}", delta="promedio de todos los puntos", delta_color="off")
     most_common = indicators["cluster_label"].mode().iloc[0]
     cards[4].metric("Perfil más frecuente", CLUSTER_LABELS.get(most_common, most_common), delta="clasificación energética", delta_color="off")
+
+    aws_staging = manifest.get("aws_staging")
+    if source == "NASA-AWS" and isinstance(aws_staging, dict):
+        st.subheader("Volumen de datos AWS procesado")
+        aws_cards = st.columns(4)
+        aws_cards[0].metric(
+            "Tamaño real en disco",
+            f"{float(aws_staging.get('disk_gib', 0) or 0):.3f} GiB",
+            delta="archivos Parquet en Kabré",
+            delta_color="off",
+        )
+        aws_cards[1].metric(
+            "Tamaño lógico",
+            f"{float(aws_staging.get('logical_uncompressed_gib', 0) or 0):.3f} GiB",
+            delta="datos sin compresión",
+            delta_color="off",
+        )
+        aws_cards[2].metric(
+            "Filas horarias",
+            f"{int(aws_staging.get('row_count', 0) or 0):,}",
+            delta=f"{int(aws_staging.get('point_count', 0) or 0)} puntos",
+            delta_color="off",
+        )
+        aws_cards[3].metric(
+            "Variables climáticas",
+            int(aws_staging.get("variable_count", 0) or 0),
+            delta="NASA POWER AWS",
+            delta_color="off",
+        )
 
     distribution_col, findings_col = st.columns([1, 1.15], vertical_alignment="top")
     with distribution_col:

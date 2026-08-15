@@ -94,3 +94,68 @@ cat results/kabre-carga-300/summary.csv
 sacct -j <job-id> --format=JobID,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
 python hpc/compare_worker_consistency.py results/kabre-carga-300
 ```
+
+## 5. Dataset masivo NASA POWER desde AWS
+
+El staging masivo debe quedar en `/data`, no en el home ni en `results`. Desde
+login envíe el trabajo sin ejecutar Python directamente:
+
+```bash
+mkdir -p outputs/slurm
+EXPERIMENT_ID=nasa-aws-5gb-v1 POINTS=300 TARGET_GIB=5 \
+  sbatch hpc/kabre_aws_5gb.slurm
+```
+
+Revise el job desde login:
+
+```bash
+squeue -j <job-id>
+sacct -j <job-id> --format=JobID,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
+cat outputs/slurm/atlas-aws-5gb-<job-id>.err
+cat /data/$USER/renewable-atlas/aws-staging/nasa-aws-5gb-v1/manifest.json
+```
+
+El estado esperado es `COMPLETED`, `ExitCode=0:0` y un manifiesto con 18
+variables. El staging conserva las observaciones horarias particionadas por
+año y mes; Dask calcula los indicadores agregados sin cargar los 5 GiB completos
+en memoria.
+
+### Procesar un intervalo completo sin límite de GiB
+
+La modalidad predeterminada se detiene cuando alcanza `TARGET_GIB`. Para que el
+staging recorra todas las fechas solicitadas, establezca
+`FULL_DATE_RANGE=true`. Envíe el trabajo desde `login`, no ejecute Python allí:
+
+```bash
+EXPERIMENT_ID=aws-geographic-300-full-range-v1 \
+POINTS=300 \
+START_DATE=2001-01-01 \
+END_DATE=2026-08-14 \
+FULL_DATE_RANGE=true \
+WORKERS=1,2,4,8 \
+REPEATS=3 \
+RESULTS_DIR="$PWD/results" \
+sbatch --partition=kura-debug --time=07:00:00 \
+  hpc/kabre_aws_5gb.slurm
+```
+
+Use un `EXPERIMENT_ID` nuevo. El manifiesto resultante debe contener
+`staging_mode: full-date-range`; `requested_end_date` conserva la fecha pedida
+y `last_timestamp` indica la última observación realmente disponible en NASA.
+En esta modalidad el volumen se mide y documenta, pero no controla cuándo se
+detiene la descarga.
+
+La corrida escribe un experimento independiente en `results/<experimento>`:
+
+```text
+results/nasa-aws-5gb-v1/
+├── summary.csv
+├── workers-001/run-01/
+│   ├── indicators.parquet
+│   ├── cluster_profiles.json
+│   └── manifest.json
+└── workers-008/run-01/...
+```
+
+Esta estructura es consumida directamente por Streamlit. No reemplaza otros
+experimentos ni modifica `results/benchmark/benchmark_results.csv`.

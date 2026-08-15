@@ -18,7 +18,6 @@ from dashboard.validators import (
     validate_row_count,
 )
 
-
 WORKERS_PATTERN = re.compile(r"workers-(\d+)$")
 RUN_PATTERN = re.compile(r"run-(\d+)$")
 
