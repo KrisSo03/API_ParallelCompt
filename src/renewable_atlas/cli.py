@@ -316,6 +316,14 @@ def _add_aws_arguments(parser):
     parser.add_argument("--end-date", default=None, help="Inclusive date, YYYY-MM-DD")
     parser.add_argument("--target-gib", type=float, default=5.0)
     parser.add_argument("--size-basis", choices=("logical", "disk"), default="logical")
+    parser.add_argument(
+        "--full-date-range",
+        action="store_true",
+        help=(
+            "Process the complete requested date range (up to the latest data "
+            "available from NASA) instead of stopping at --target-gib"
+        ),
+    )
     parser.add_argument("--staging-root", default=None)
 
 
@@ -340,6 +348,7 @@ def _run_aws_command(args, settings, container):
             end_date=end_date,
             target_gib=args.target_gib,
             size_basis=args.size_basis,
+            full_date_range=args.full_date_range,
         )
         logger.info(
             "AWS staging completed: %s rows, %.3f GiB logical, %.3f GiB on disk",
@@ -368,6 +377,9 @@ def _run_aws_command(args, settings, container):
         stored_manifest,
         target_gib=args.target_gib,
         size_basis=args.size_basis,
+        full_date_range=args.full_date_range,
+        start_date=start_date,
+        end_date=end_date,
     )
     rows = []
     for workers in worker_counts:
@@ -392,13 +404,45 @@ def _run_aws_command(args, settings, container):
     return 0
 
 
-def _revalidate_aws_staging(manifest, target_gib, size_basis):
-    """Validate an existing staging against the target of the current run.
+def _revalidate_aws_staging(
+    manifest,
+    target_gib,
+    size_basis,
+    full_date_range=False,
+    start_date=None,
+    end_date=None,
+):
+    """Validate an existing staging against the mode of the current run.
 
-    The stored manifest remains unchanged.  The returned copy records both
-    the original request and the smaller target accepted for this run, so a
-    complete dataset can be reused without falsifying its download history.
+    A size-bounded run checks its requested GiB threshold. A full-range run
+    requires an explicitly completed date-range staging with matching dates.
+    The stored manifest remains unchanged.
     """
+    if full_date_range:
+        if manifest.get("staging_mode") != "full-date-range":
+            raise RuntimeError(
+                "AWS staging was not created in full-date-range mode; "
+                "download it again with --full-date-range"
+            )
+        requested_start = pd.Timestamp(start_date).isoformat()
+        requested_end = pd.Timestamp(end_date).isoformat()
+        if (
+            manifest.get("requested_start_date") != requested_start
+            or manifest.get("requested_end_date") != requested_end
+        ):
+            raise RuntimeError(
+                "AWS staging date range does not match the current request: "
+                f"stored {manifest.get('requested_start_date')} to "
+                f"{manifest.get('requested_end_date')}, requested "
+                f"{requested_start} to {requested_end}"
+            )
+        if manifest.get("status") != "success":
+            raise RuntimeError("AWS full-date-range staging is not complete")
+
+        validated = dict(manifest)
+        validated["reused_existing_staging"] = True
+        return validated
+
     size_key = {
         "logical": "logical_uncompressed_gib",
         "disk": "disk_gib",

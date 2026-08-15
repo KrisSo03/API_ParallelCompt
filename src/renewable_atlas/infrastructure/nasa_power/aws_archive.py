@@ -51,7 +51,7 @@ METEOROLOGICAL_ZARR_URL = (
 
 
 class NasaPowerAwsStager:
-    """Stream NASA POWER AWS Zarr data into bounded Parquet partitions."""
+    """Stream NASA POWER AWS Zarr data into Parquet partitions."""
 
     def __init__(
         self,
@@ -76,10 +76,11 @@ class NasaPowerAwsStager:
         end_date: str,
         target_gib: float = 5.0,
         size_basis: str = "logical",
+        full_date_range: bool = False,
     ) -> dict:
         if not points:
             raise ValueError("At least one grid point is required")
-        if target_gib <= 0:
+        if not full_date_range and target_gib <= 0:
             raise ValueError("target_gib must be positive")
         if size_basis not in {"logical", "disk"}:
             raise ValueError("size_basis must be 'logical' or 'disk'")
@@ -139,15 +140,16 @@ class NasaPowerAwsStager:
                 last_timestamp = frame["timestamp"].max().isoformat()
 
                 measured_bytes = logical_bytes if size_basis == "logical" else disk_bytes
-                if measured_bytes >= target_bytes:
+                if not full_date_range and measured_bytes >= target_bytes:
                     break
         finally:
             solar.close()
             meteorological.close()
 
         measured_bytes = logical_bytes if size_basis == "logical" else disk_bytes
+        completed = row_count > 0 if full_date_range else measured_bytes >= target_bytes
         manifest = {
-            "status": "success" if measured_bytes >= target_bytes else "partial",
+            "status": "success" if completed else "partial",
             "created_at_utc": datetime.now(UTC).isoformat(),
             "source": "NASA POWER AWS Open Data",
             "solar_zarr": self.solar_url,
@@ -160,7 +162,10 @@ class NasaPowerAwsStager:
             "partition_count": partition_count,
             "first_timestamp": first_timestamp,
             "last_timestamp": last_timestamp,
-            "target_gib": target_gib,
+            "staging_mode": "full-date-range" if full_date_range else "target-size",
+            "requested_start_date": pd.Timestamp(start_date).isoformat(),
+            "requested_end_date": pd.Timestamp(end_date).isoformat(),
+            "target_gib": None if full_date_range else target_gib,
             "size_basis": size_basis,
             "logical_uncompressed_gib": logical_bytes / 1024**3,
             "disk_gib": disk_bytes / 1024**3,

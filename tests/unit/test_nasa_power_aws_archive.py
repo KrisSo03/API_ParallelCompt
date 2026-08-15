@@ -56,8 +56,8 @@ def test_partial_staging_can_be_revalidated_against_a_smaller_target():
     assert validated["reused_existing_staging"] is True
 
 
-def _dataset(variables):
-    times = pd.date_range("2023-01-01", periods=48, freq="h")
+def _dataset(variables, periods=48):
+    times = pd.date_range("2023-01-01", periods=periods, freq="h")
     coordinates = {"time": times, "lat": [10.0, 11.0], "lon": [-85.0, -84.0]}
     shape = (len(times), 2, 2)
     return xr.Dataset(
@@ -93,6 +93,52 @@ def test_stager_preserves_18_variables_and_writes_outside_results(tmp_path):
     assert frame["T2M_MAX"].notna().all()
     assert frame["T2M_MIN"].notna().all()
     assert not (tmp_path / "results").exists()
+
+
+def test_stager_full_date_range_does_not_stop_at_target_size(tmp_path):
+    periods = 24 * 33
+    solar = _dataset(SOLAR_VARIABLES, periods=periods)
+    meteorological = _dataset(METEOROLOGICAL_VARIABLES, periods=periods)
+
+    def opener(url):
+        return solar.copy() if "syn1deg" in url else meteorological.copy()
+
+    output = tmp_path / "full-range"
+    manifest = NasaPowerAwsStager(dataset_opener=opener).stage(
+        points=[Point(10.1, -84.9, "Costa Rica")],
+        output_dir=output,
+        start_date="2023-01-01",
+        end_date="2023-02-02 23:00:00",
+        target_gib=0.000001,
+        full_date_range=True,
+    )
+
+    assert manifest["status"] == "success"
+    assert manifest["staging_mode"] == "full-date-range"
+    assert manifest["target_gib"] is None
+    assert manifest["partition_count"] == 2
+    assert manifest["last_timestamp"] == "2023-02-02T23:00:00"
+
+
+def test_full_date_range_staging_is_revalidated_by_requested_dates():
+    stored = {
+        "status": "success",
+        "staging_mode": "full-date-range",
+        "requested_start_date": "2023-01-01T00:00:00",
+        "requested_end_date": "2023-12-31T00:00:00",
+    }
+
+    validated = _revalidate_aws_staging(
+        stored,
+        target_gib=5.0,
+        size_basis="logical",
+        full_date_range=True,
+        start_date="2023-01-01",
+        end_date="2023-12-31",
+    )
+
+    assert validated["status"] == "success"
+    assert validated["reused_existing_staging"] is True
 
 
 def test_processor_keeps_dashboard_indicator_contract(tmp_path):

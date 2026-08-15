@@ -239,6 +239,18 @@ tamaño lógico sin comprimir por defecto. Use `--size-basis disk` cuando la
 evidencia requiera que los archivos Parquet ocupen realmente ese volumen en
 disco. El manifiesto y el dashboard registran ambos valores.
 
+Existen dos modalidades de staging:
+
+- Por volumen (predeterminada): se detiene cuando alcanza `--target-gib`.
+- Por fechas: `--full-date-range` ignora el límite de GiB y recorre todo el
+  intervalo solicitado, hasta la última observación que NASA tenga disponible.
+
+El manifiesto distingue ambas modalidades mediante `staging_mode`. En modo de
+rango completo, `target_gib` queda en `null` y se registran
+`requested_start_date`, `requested_end_date`, `first_timestamp` y
+`last_timestamp`. Use un identificador de experimento nuevo al cambiar de
+modalidad; un staging limitado por volumen no se acepta como rango completo.
+
 Para una prueba pequeña local o dentro de un nodo de cómputo:
 
 ```bash
@@ -310,6 +322,23 @@ MAIN_BASELINE=true \
 La corrida se detiene al superar 1 GiB en disco y solo continúa al benchmark
 si el manifiesto de staging tiene `status: success`. Streamlit muestra el
 tamaño real, tamaño lógico, filas horarias y cantidad de variables.
+
+Para procesar 300 puntos durante todo el periodo solicitado, sin detenerse al
+alcanzar un volumen, use la modalidad por fechas:
+
+```bash
+EXPERIMENT_ID=aws-geographic-300-full-range-v1 POINTS=300 \
+START_DATE=2001-01-01 END_DATE=2026-08-14 FULL_DATE_RANGE=true \
+WORKERS=1,2,4,8 REPEATS=3 \
+  sbatch --partition=kura-debug --time=07:00:00 \
+  hpc/kabre_aws_5gb.slurm
+```
+
+La fecha final debe ajustarse al día de la prueba. Si NASA todavía no ofrece
+datos para todo el intervalo, el staging conserva lo disponible y el
+manifiesto permite comparar `requested_end_date` con `last_timestamp`. El modo
+por fechas puede reutilizarse con `DOWNLOAD=false` únicamente si las fechas
+solicitadas coinciden con las registradas originalmente.
 
 Para comparar el comportamiento equivalente a `main` contra la ruta nueva sin
 mezclar fuentes, use `MAIN_BASELINE=true`. La configuración de un worker leerá

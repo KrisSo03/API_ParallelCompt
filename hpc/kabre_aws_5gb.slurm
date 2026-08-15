@@ -27,6 +27,7 @@ REPEATS="${REPEATS:-1}"
 RESULTS_DIR="${RESULTS_DIR:-${SLURM_SUBMIT_DIR}/results}"
 MAIN_BASELINE="${MAIN_BASELINE:-false}"
 DOWNLOAD="${DOWNLOAD:-true}"
+FULL_DATE_RANGE="${FULL_DATE_RANGE:-false}"
 
 BASELINE_ARGS=()
 if [[ "${MAIN_BASELINE}" == "true" ]]; then
@@ -35,6 +36,10 @@ fi
 DOWNLOAD_ARGS=()
 if [[ "${DOWNLOAD}" == "true" ]]; then
   DOWNLOAD_ARGS+=(--download)
+fi
+RANGE_ARGS=()
+if [[ "${FULL_DATE_RANGE}" == "true" ]]; then
+  RANGE_ARGS+=(--full-date-range)
 fi
 
 python -m renewable_atlas aws-run \
@@ -50,4 +55,5 @@ python -m renewable_atlas aws-run \
   --scheduler threads \
   --results-dir "${RESULTS_DIR}" \
   "${DOWNLOAD_ARGS[@]}" \
+  "${RANGE_ARGS[@]}" \
   "${BASELINE_ARGS[@]}"
