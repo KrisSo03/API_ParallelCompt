@@ -1,9 +1,8 @@
 # Atlas paralelo de potencial de energía renovable para Centroamérica
 
-Pipeline reproducible que obtiene datos climáticos históricos de NASA POWER,
-calcula indicadores de potencial solar, eólico e híbrido para 300 puntos,
-agrupa regiones mediante K-Means y compara el procesamiento secuencial con
-Dask usando 1, 2, 4 y 8 workers.
+Sistema reproducible para construir un atlas de potencial energético relativo solar–eólico para Centroamérica utilizando datos climáticos históricos de NASA POWER.
+
+La solución genera una grilla regional, prepara datos solares y meteorológicos, procesa las observaciones secuencialmente con pandas y paralelamente con Dask, calcula indicadores energéticos, clasifica las ubicaciones mediante K-Means y presenta los resultados en un dashboard interactivo desarrollado con Streamlit.
 
 ## Equipo
 
@@ -15,55 +14,486 @@ Dask usando 1, 2, 4 y 8 workers.
 
 ## Problema y objetivo
 
-Centroamérica posee recursos solares y eólicos importantes, pero identificar
-zonas prioritarias requiere integrar y procesar grandes volúmenes de datos
-climáticos espaciales y temporales. El proyecto busca responder:
+Centroamérica cuenta con condiciones favorables para aprovechar recursos solares y eólicos. Sin embargo, identificar zonas prioritarias requiere integrar y procesar grandes cantidades de información climática espacial y temporal.
 
-> ¿Cómo puede un pipeline paralelo basado en datos históricos de NASA POWER
-> identificar y clasificar zonas con potencial híbrido solar-eólico y reducir
-> el costo computacional del análisis?
+El objetivo del proyecto es desarrollar un sistema paralelo para construir un atlas de potencial de energía renovable híbrida solar–eólica mediante datos históricos de NASA POWER y técnicas de aprendizaje automático.
 
-La solución genera indicadores comparables por ubicación, clasifica patrones
-climáticos y produce evidencia de tiempo, speedup, eficiencia y memoria. Se
-alinea con los ODS 7 (energía asequible y no contaminante) y 13 (acción por el
-clima).
+La pregunta que guía el proyecto es:
 
-## Flujo real del sistema
+> ¿Cómo puede un pipeline paralelo basado en datos históricos de NASA POWER identificar y clasificar zonas con potencial híbrido solar–eólico en Centroamérica y reducir el tiempo de procesamiento sin afectar la consistencia de los resultados?
+
+Los indicadores producidos representan potenciales climáticos relativos. No sustituyen estudios técnicos, económicos, ambientales o de conexión eléctrica para seleccionar emplazamientos definitivos.
+
+## Objetivos de Desarrollo Sostenible
+
+El proyecto se relaciona con:
+
+- ODS 7: Energía asequible y no contaminante.
+- ODS 9: Industria, innovación e infraestructura.
+- ODS 11: Ciudades y comunidades sostenibles.
+- ODS 13: Acción por el clima.
+
+## Flujo general de la solución
 
 ```text
-Grilla de 300 puntos
+Grilla regional
         ↓
-Descarga NASA POWER (secuencial, con reintentos)
+NASA POWER en AWS
         ↓
-Parseo y modelo ClimateObservation
+Preparación e integración
         ↓
-Validación pre-clean → limpieza → validación post-clean
+Parquet mensual
         ↓
-Indicadores por punto (secuencial o Dask)
+pandas / Dask
         ↓
-Scores solar, eólico e híbrido
+Indicadores energéticos
         ↓
-Selección automática de K por silhouette (K=2..10)
+K-Means e interpretación
         ↓
-K-Means, interpretación y archivos para el dashboard
+Resultados reproducibles
+        ↓
+Atlas en Streamlit
 ```
 
-Dask paraleliza la preparación y el cálculo de indicadores independientes por
-punto. La descarga HTTP y el clustering se ejecutan actualmente en el proceso
-coordinador. Esta delimitación es importante al interpretar el speedup.
+El flujo completo se puede resumir en nueve etapas:
 
-## Inicio rápido local
+1. Generación reproducible de 300 puntos dentro de los siete países de Centroamérica.
+2. Lectura de datos climáticos horarios de NASA POWER disponibles en AWS.
+3. Selección espacial e integración temporal de variables solares y meteorológicas.
+4. Almacenamiento intermedio en archivos Parquet mensuales.
+5. Procesamiento secuencial con pandas y paralelo con Dask.
+6. Cálculo de indicadores relativos solar, eólico e híbrido.
+7. Agrupamiento mediante K-Means e interpretación de perfiles.
+8. Persistencia de resultados y métricas reproducibles.
+9. Visualización del atlas y del rendimiento mediante Streamlit.
+
+## Fuentes de datos
+
+El proyecto mantiene dos rutas de adquisición, utilizadas con propósitos diferentes.
+
+### NASA POWER Point API
+
+El Point API se utiliza para pruebas funcionales pequeñas. Esta ruta realiza solicitudes HTTP por ubicación y permite validar:
+
+- Conexión con NASA POWER.
+- Parseo de respuestas.
+- Construcción de objetos `ClimateObservation`.
+- Validación previa a la limpieza.
+- Limpieza y validación posterior.
+- Cálculo de indicadores por punto.
+
+La configuración predeterminada del flujo Point API utiliza datos diarios entre 2000 y 2023. Esta ruta no fue la utilizada para el experimento masivo final.
+
+### NASA POWER Open Data en AWS
+
+La ruta masiva utilizada en el experimento final accede mediante HTTPS a archivos Zarr públicos:
+
+- `syn1deg`: variables solares y nubosidad.
+- MERRA-2: variables meteorológicas.
+- Xarray: selección de celdas climáticas.
+- `fsspec`: acceso remoto.
+- PyArrow: lectura y escritura de Parquet.
+- Zstandard: compresión de las particiones.
+
+La preparación se realiza por bloques mensuales. Las fuentes solares y meteorológicas se integran mediante el identificador del punto y la marca temporal.
+
+Esta estrategia permite reutilizar exactamente la misma entrada en todas las configuraciones y evita incorporar la latencia de descarga al cálculo del speedup.
+
+## Variables climáticas
+
+El conjunto final conserva 18 variables relacionadas con:
+
+- Radiación solar global.
+- Irradiancia directa normal.
+- Radiación difusa.
+- Radiación de cielo despejado.
+- Índice de claridad.
+- Nubosidad.
+- Velocidad del viento.
+- Dirección del viento.
+- Temperatura.
+- Temperatura de punto de rocío.
+- Humedad relativa.
+- Humedad específica.
+- Presión atmosférica.
+- Precipitación.
+
+Las variables centrales del análisis energético son:
+
+- `ALLSKY_SFC_SW_DWN`
+- `ALLSKY_SFC_SW_DNI`
+- `WS50M`
+- `WS100M`
+
+NASA POWER no entrega directamente `WS100M` en la fuente utilizada. El pipeline la estima a partir de `WS50M` mediante una transformación de perfil vertical.
+
+Las variables `T2M_MAX` y `T2M_MIN` se derivan a partir de las observaciones horarias de temperatura.
+
+## Preparación y calidad
+
+La preparación depende de la fuente utilizada.
+
+### Calidad en el flujo Point API
+
+El flujo basado en observaciones individuales utiliza `DataValidator` para revisar:
+
+- Valores faltantes.
+- Duplicados.
+- Fechas inválidas o duplicadas.
+- Orden temporal.
+- Valores infinitos.
+- Valores sentinela.
+- Rangos climáticos plausibles.
+- Columnas completamente vacías.
+- Completitud de las variables requeridas.
+
+Las variables requeridas son:
+
+- `sw_dwn`
+- `dni`
+- `ws_50m`
+- `ws_100m`
+
+El umbral técnico mínimo de completitud es 50 %. El objetivo metodológico es 85 %.
+
+La decisión de continuar se toma utilizando el reporte posterior a la limpieza.
+
+### Preparación en la ruta AWS
+
+La ruta AWS procesa directamente los arreglos Zarr por bloques mensuales. En esta etapa:
+
+- Se seleccionan las celdas cercanas a cada punto.
+- Se integran las fuentes por punto y fecha.
+- Se comprueba la presencia de las variables esperadas.
+- Se conserva la identidad geográfica.
+- Se generan las variables derivadas.
+- Se escriben las particiones mensuales.
+
+La validación pre-clean/post-clean del Point API no debe atribuirse directamente a la ruta AWS, ya que ambas utilizan procesos de preparación diferentes.
+
+## Almacenamiento intermedio
+
+Las observaciones horarias se almacenan en archivos Parquet:
+
+- Compresión: Zstandard.
+- Particionado: año y mes.
+- Ubicación recomendada en Kabré:
+
+```text
+/data/$USER/renewable-atlas/aws-staging/
+```
+
+El almacenamiento intermedio permite:
+
+- Reutilizar la misma entrada.
+- Evitar nuevas consultas a AWS.
+- Separar adquisición y benchmark.
+- Procesar los datos por particiones.
+- Mantener trazabilidad del volumen y periodo.
+
+## Procesamiento secuencial y paralelo
+
+El proyecto compara dos estrategias sobre la misma entrada.
+
+### Línea base secuencial
+
+- Motor: pandas.
+- Workers: 1.
+- Identificador: `main-sequential`.
+
+### Procesamiento paralelo
+
+- Motor: Dask DataFrame.
+- Workers evaluados: 2, 4 y 8.
+- Scheduler utilizado en el experimento final: `threads`.
+- Identificador: `aws-dask`.
+
+La ruta AWS utiliza `dd.read_parquet` para construir un Dask DataFrame sobre las particiones mensuales.
+
+Dask distribuye las operaciones de lectura y agregación. Al finalizar, `compute()` materializa únicamente el resultado reducido: una fila por cada uno de los 300 puntos.
+
+La descarga desde AWS y la construcción inicial del staging no forman parte de los tiempos utilizados para calcular speedup y eficiencia.
+
+## Indicadores energéticos
+
+Por cada punto se calculan, entre otras estadísticas:
+
+- `sw_dwn_mean`
+- `dni_mean`
+- `ws_50m_mean`
+- `ws_100m_mean`
+
+El índice solar se obtiene mediante normalización min–max de `sw_dwn_mean`.
+
+El índice eólico se obtiene mediante normalización min–max de `ws_100m_mean`.
+
+Cuando todos los valores de una variable son iguales, se utiliza un valor neutral de 0.5.
+
+El índice híbrido se calcula como:
+
+```text
+H = 0.5S + 0.3W + 0.2(SW)
+```
+
+Donde:
+
+- `S`: índice solar.
+- `W`: índice eólico.
+- `H`: índice híbrido.
+
+El término de interacción favorece ubicaciones donde ambos recursos presentan valores relativos altos.
+
+## Clustering
+
+K-Means utiliza las siguientes características:
+
+- `sw_dwn_mean`
+- `dni_mean`
+- `ws_50m_mean`
+- `ws_100m_mean`
+
+Antes del agrupamiento:
+
+1. Los valores faltantes se imputan mediante la mediana de cada columna.
+2. Una columna completamente vacía se sustituye por cero.
+3. Las características se estandarizan con `StandardScaler`.
+
+El pipeline evalúa automáticamente valores de K entre 2 y 10.
+
+El K recomendado corresponde al valor con mayor coeficiente Silhouette válido. Davies–Bouldin se conserva como métrica complementaria.
+
+Los umbrales exploratorios son:
+
+- Silhouette ≥ 0.5.
+- Davies–Bouldin < 2.0.
+- ARI ≥ 0.95 cuando se comparan corridas.
+
+No alcanzar un umbral se registra como resultado científico y no se oculta como un fallo técnico.
+
+## Interpretación de perfiles
+
+Los clusters se interpretan mediante dos índices compuestos:
+
+- Índice solar: combina `sw_dwn_mean` y `dni_mean`.
+- Índice eólico: combina `ws_50m_mean` y `ws_100m_mean`.
+
+Los centroides se convierten en puntuaciones estandarizadas y posteriormente en percentiles relativos.
+
+Las categorías utilizadas son:
+
+- `Hybrid-high`
+- `Solar-dominant`
+- `Wind-dominant`
+- `Lower-resource`
+
+Cada perfil conserva:
+
+- Etiqueta.
+- Descripción.
+- Centroides.
+- Percentiles solar y eólico.
+- Confianza relativa.
+- Distribución por país.
+- País dominante.
+
+## Experimento final en Kabré
+
+El experimento utilizado como referencia para el informe y la presentación es:
+
+```text
+aws-geographic-300-full-range-v1
+```
+
+### Infraestructura
+
+| Parámetro | Valor |
+|---|---|
+| Supercomputadora | Kabré |
+| Partición | `kura` |
+| Nodo asignado | `kura-1b.cnca` |
+| Job Slurm | `600690` |
+| Nodos | 1 |
+| CPUs | 8 |
+| Memoria solicitada | 32 GiB |
+| Python | 3.12.11 |
+| Scheduler Dask | `threads` |
+| Estado | `COMPLETED` |
+| Exit code | `0:0` |
+| Duración total | 1:15:56 |
+
+El código utilizado corresponde al commit:
+
+```text
+1ba46fbbe81a5a4146f6cfd5c6310c00e49fbf33
+```
+
+### Conjunto final
+
+| Propiedad | Resultado |
+|---|---:|
+| Fuente | NASA POWER Open Data en AWS |
+| Periodo | 2001-01-01 a 2026-08-14 |
+| Resolución | Horaria |
+| Puntos | 300 |
+| Países | 7 |
+| Variables | 18 |
+| Observaciones | 67,363,500 |
+| Particiones mensuales | 308 |
+| Tamaño lógico | 1.833 GiB |
+| Tamaño físico Parquet | 1.403 GiB |
+| Modo | `full-date-range` |
+
+El modo `full-date-range` recorre el periodo temporal completo solicitado. El experimento final no terminó al alcanzar un tamaño específico.
+
+### Diseño experimental
+
+Se evaluaron:
+
+```text
+Workers: 1, 2, 4 y 8
+Repeticiones: 3 por configuración
+Total de corridas: 12
+Semilla K-Means: 42
+Rango de K: 2–10
+```
+
+Todas las configuraciones utilizaron:
+
+- El mismo conjunto Parquet.
+- Los mismos 300 puntos.
+- Las mismas 18 variables.
+- El mismo periodo.
+- La misma lógica de agregación.
+- La misma semilla.
+- El mismo ambiente.
+- La misma versión del código.
+
+## Resultados de rendimiento
+
+| Workers | Estrategia | Tiempo promedio (s) | Speedup | Eficiencia (%) | Memoria (MiB) |
+|---:|---|---:|---:|---:|---:|
+| 1 | pandas secuencial | 26.07 | 1.00 | 100.03 | 9,291.40 |
+| 2 | Dask | 14.87 | 1.75 | 87.71 | 10,417.93 |
+| 4 | Dask | 10.50 | 2.48 | 62.10 | 14,338.02 |
+| 8 | Dask | 8.92 | 2.92 | 36.55 | 20,374.23 |
+
+### Interpretación
+
+- Ocho workers produjeron el menor tiempo.
+- Dos workers ofrecieron el mejor equilibrio entre velocidad, eficiencia y memoria.
+- Cuatro workers representaron una alternativa intermedia.
+- El speedup fue sublineal.
+- La eficiencia disminuyó al aumentar los workers.
+- La memoria aumentó con el paralelismo.
+
+El valor de 100.03 % con un worker se debe a pequeñas diferencias entre el promedio de referencia y las corridas individuales. No representa una eficiencia física superior al 100 %.
+
+## Calidad y consistencia del clustering
+
+| Métrica | Resultado |
+|---|---:|
+| K recomendado | 5 |
+| Silhouette | 0.441 |
+| Davies–Bouldin | 0.822 |
+| ARI | 1.000 |
+| Coincidencia de etiquetas | 100 % |
+| Semilla | 42 |
+
+Interpretación:
+
+- Silhouette indica una separación moderada.
+- El valor quedó por debajo del objetivo exploratorio de 0.5.
+- Davies–Bouldin cumplió el criterio de ser menor que 2.0.
+- ARI demuestra que las asignaciones fueron consistentes entre workers y repeticiones.
+- El paralelismo no modificó los clusters.
+
+El experimento utilizó una semilla fija. Por tanto, el ARI no representa una prueba de estabilidad con múltiples semillas aleatorias.
+
+## Perfiles obtenidos
+
+| Cluster | Perfil | Puntos | País dominante |
+|---:|---|---:|---|
+| 0 | Híbrido alto | 59 | El Salvador |
+| 1 | Bajo potencial relativo | 47 | Costa Rica |
+| 2 | Solar dominante | 98 | Guatemala |
+| 3 | Eólico dominante | 44 | Panamá |
+| 4 | Híbrido alto | 52 | Belice |
+
+## Organización de resultados
+
+Los resultados se organizan por experimento, cantidad de workers y repetición:
+
+```text
+results/<experimento>/
+├── summary.csv
+├── workers-001/
+│   ├── run-01/
+│   │   ├── indicators.parquet
+│   │   ├── cluster_profiles.json
+│   │   └── manifest.json
+│   ├── run-02/
+│   └── run-03/
+├── workers-002/
+├── workers-004/
+└── workers-008/
+```
+
+### Artefactos
+
+- `indicators.parquet`: coordenadas, país, indicadores, scores y `cluster_id`.
+- `cluster_profiles.json`: etiquetas, descripciones y perfiles.
+- `manifest.json`: configuración, trazabilidad, estado y calidad.
+- `summary.csv`: tiempo, memoria, baseline, speedup y eficiencia.
+
+Esta organización evita sobrescrituras y permite reconstruir las tablas y visualizaciones.
+
+## Dashboard en Streamlit
+
+El dashboard consume los resultados agregados y no las 67.36 millones de observaciones horarias.
+
+Permite:
+
+- Seleccionar un experimento.
+- Visualizar los 300 puntos en un mapa.
+- Filtrar por país y perfil.
+- Consultar scores solar, eólico e híbrido.
+- Revisar los perfiles de los clusters.
+- Consultar K, Silhouette y Davies–Bouldin.
+- Comparar tiempo, memoria, speedup y eficiencia.
+
+### Ejecutar localmente
+
+```bash
+python -m streamlit run dashboard/app.py
+```
+
+Para mostrar el resultado final debe existir:
+
+```text
+results/aws-geographic-300-full-range-v1/
+```
+
+Consulte también [docs/DASHBOARD.md](docs/DASHBOARD.md).
+
+## Instalación local
 
 ### Requisitos
 
-- Python 3.10 o superior; Python 3.12 es la versión usada en Kabré.
-- Git y acceso HTTPS para usar NASA POWER.
+- Python 3.10 o superior.
+- Python 3.12 recomendado.
+- Git.
+- Acceso HTTPS para utilizar NASA POWER.
 
-### Instalación
+### Clonar el repositorio
 
 ```bash
 git clone https://github.com/KrisSo03/API_ParallelCompt.git
 cd API_ParallelCompt
+```
+
+### Crear el ambiente
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -71,13 +501,15 @@ python -m pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-En PowerShell, active el ambiente con:
+En PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
 
-### Verificación reproducible sin internet
+## Verificación local
+
+Las pruebas deterministas no requieren acceso a NASA POWER:
 
 ```bash
 ruff check .
@@ -86,25 +518,29 @@ python main.py run-all --use-fake
 python main.py benchmark --use-fake
 ```
 
-El flujo general también puede regenerar estos reportes históricos:
+`--use-fake` se utiliza para pruebas reproducibles y no representa la fuente del atlas final.
 
-- `results/cluster_indicators.csv`
-- `results/cluster_profiles.csv`
-- `results/benchmark/benchmark_results.csv`
+El flujo local tradicional puede generar:
 
-Estos CSV no son la entrada del dashboard. Para Streamlit utilice las salidas de `hpc-run` o
-`hpc-benchmark` documentadas en [docs/DASHBOARD.md](docs/DASHBOARD.md).
+```text
+results/cluster_indicators.csv
+results/cluster_indicators.parquet
+results/cluster_profiles.csv
+results/benchmark/benchmark_results.csv
+results/benchmark/benchmark_results.parquet
+```
 
-### Ejecución con datos reales
+Estas salidas no deben confundirse con la estructura experimental utilizada por el dashboard.
 
-La fuente normal es NASA POWER; no requiere API key:
+## Ejecución con Point API
+
+NASA POWER no requiere API key:
 
 ```bash
 python main.py run-all --workers 4
 ```
 
-La configuración predeterminada consulta 300 puntos entre 2000 y 2023. Para
-una validación real pequeña, modifique temporalmente `.env`, por ejemplo:
+Para una prueba pequeña, configure temporalmente `.env`:
 
 ```dotenv
 DATE_RANGE_START_YEAR=2023
@@ -113,145 +549,23 @@ GRID_SIZE=5
 GRID_SAMPLE_SIZE=5
 ```
 
-No use `--use-fake` si el objetivo es demostrar acceso a NASA POWER.
+No utilice `--use-fake` cuando el objetivo sea demostrar acceso a NASA POWER.
 
-## Comandos
+## Comandos principales
 
 | Comando | Propósito |
 |---|---|
-| `python main.py download` | Descargar y guardar observaciones reales |
-| `python main.py process --workers 4` | Descargar, limpiar y calcular indicadores |
-| `python main.py cluster --workers 4` | Procesar, agrupar y generar reportes |
-| `python main.py run-all --workers 4` | Ejecutar el pipeline completo |
-| `python main.py benchmark --use-fake` | Comparar estrategias con entrada reproducible |
-| `python -m renewable_atlas hpc-benchmark ...` | Ejecutar una matriz HPC controlada |
+| `python main.py download` | Descargar observaciones mediante Point API |
+| `python main.py process --workers 4` | Preparar y calcular indicadores |
+| `python main.py cluster --workers 4` | Agrupar y generar reportes |
+| `python main.py run-all --workers 4` | Ejecutar el pipeline tradicional |
+| `python main.py benchmark --use-fake` | Ejecutar benchmark determinista |
+| `python -m renewable_atlas hpc-benchmark ...` | Ejecutar una matriz HPC |
+| `python -m renewable_atlas aws-run ...` | Procesar un staging AWS |
 
-`--use-fake` es una herramienta de prueba determinista, no la fuente del atlas
-final.
+## Prueba pequeña de AWS
 
-## Datos y metodología
-
-### Fuente y periodo
-
-- Fuente: NASA POWER Daily API.
-- Cobertura: Centroamérica.
-- Periodo predeterminado: 2000–2023.
-- Tamaño predeterminado: 300 puntos.
-- Persistencia: Parquet y CSV.
-
-Se conservan 18 variables de radiación, viento, temperatura, presión, humedad,
-precipitación y nubosidad. Entre las variables centrales están
-`ALLSKY_SFC_SW_DWN`, `ALLSKY_SFC_SW_DNI`, `WS10M` y `WS50M`.
-
-Las coordenadas no son seleccionadas por NASA POWER: el proyecto genera la
-cantidad total configurada y después consulta el API para cada ubicación. Los
-puntos se reparten de forma equilibrada entre los siete países y se validan
-dentro de sus fronteras con polígonos de Natural Earth 5.1.1. La selección es
-determinista, por lo que una misma cantidad produce las mismas coordenadas. La
-fuente geográfica y su licencia se documentan en `data/geography/README.md`.
-
-La propuesta menciona `WS100M`, pero NASA POWER no la entrega en esta consulta.
-El campo `ws_100m` se estima desde `WS50M` mediante la ley de potencia con
-exponente 1/7. Esta derivación se conserva explícitamente en el código y en la
-interpretación de resultados.
-
-### Calidad de datos
-
-Por cada punto se evalúan duplicados, faltantes, fechas, sentinels, infinitos y
-rangos climáticos antes y después de la limpieza. La ejecución continúa según
-el reporte post-clean.
-
-- Variables requeridas: `sw_dwn`, `dni`, `ws_50m`, `ws_100m`.
-- Umbral técnico mínimo: 50 % de completitud en variables requeridas.
-- Objetivo metodológico: 85 % de completitud.
-
-El 50 % evita detener innecesariamente una corrida; el 85 % es la meta de
-calidad que debe reportarse. Un reporte pre-clean representa los datos después
-del parseo de NASA, no el JSON HTTP original.
-
-### Indicadores y clustering
-
-Los scores se normalizan sobre la muestra:
-
-- `solar_score`: potencial solar normalizado.
-- `wind_score`: potencial eólico basado en `ws_100m` derivada.
-- `hybrid_score`: combinación ponderada solar-eólica.
-
-El pipeline normal evalúa automáticamente K entre 2 y 10 y selecciona el mayor
-silhouette válido. También registra Davies-Bouldin y puede evaluar estabilidad
-mediante Adjusted Rand Index. Los umbrales metodológicos son:
-
-- Silhouette ≥ 0.5.
-- Davies-Bouldin < 2.0.
-- ARI ≥ 0.95 cuando se habilitan repeticiones de estabilidad.
-
-No alcanzar un umbral se registra como resultado científico; no se oculta ni
-se interpreta automáticamente como un fallo técnico del pipeline.
-
-## Configuración reproducible
-
-Las variables disponibles están documentadas sin secretos en `.env.example`.
-Las más relevantes son:
-
-```dotenv
-DATE_RANGE_START_YEAR=2000
-DATE_RANGE_END_YEAR=2023
-GRID_SIZE=300
-GRID_ENABLE_SAMPLING=true
-GRID_SAMPLE_SIZE=300
-
-CLUSTERING_AUTO_SELECT=true
-CLUSTERING_MIN_CLUSTERS=2
-CLUSTERING_MAX_CLUSTERS=10
-CLUSTERING_N_CLUSTERS=5
-CLUSTERING_RANDOM_STATE=42
-
-BENCHMARK_WORKER_COUNTS=1,2,4,8
-BENCHMARK_REPEATS_PER_CONFIG=3
-EXECUTION_SOURCE=nasa
-EXECUTION_RANDOM_SEED=42
-```
-
-Para poder comparar dos experimentos deben coincidir como mínimo:
-
-| Elemento | Evidencia |
-|---|---|
-| Código | Commit de Git registrado en `manifest.json` |
-| Entrada | Cantidad de puntos y `input_checksum` |
-| Periodo y parámetros | Snapshot de configuración del manifiesto |
-| Ambiente | Python y dependencias de `requirements-kabre.txt` |
-| Recursos | Workers, scheduler, CPUs, memoria y partición Slurm |
-| Repeticiones | Mismo número y fuente de datos |
-
-## Dataset masivo desde NASA POWER en AWS
-
-La ruta masiva no hace miles de solicitudes al Point API. Lee los archivos
-Zarr públicos de NASA POWER por HTTPS, por mes y con Dask:
-
-- `syn1deg`: 6 variables solares y nubosidad.
-- `merra2`: 10 variables meteorológicas horarias.
-- `T2M_MAX` y `T2M_MIN`: derivadas de `T2M` para conservar las 18 variables
-  del pipeline existente.
-
-Los Parquet de staging se guardan fuera de `results`, por defecto en
-`data/aws-staging/<experimento>/hourly`. `--target-gib` se evalúa contra el
-tamaño lógico sin comprimir por defecto. Use `--size-basis disk` cuando la
-evidencia requiera que los archivos Parquet ocupen realmente ese volumen en
-disco. El manifiesto y el dashboard registran ambos valores.
-
-Existen dos modalidades de staging:
-
-- Por volumen (predeterminada): se detiene cuando alcanza `--target-gib`.
-- Por fechas: `--full-date-range` ignora el límite de GiB y recorre todo el
-  intervalo solicitado, hasta la última observación que NASA tenga disponible.
-
-El manifiesto distingue ambas modalidades mediante `staging_mode`. En modo de
-rango completo, `target_gib` queda en `null` y se registran
-`requested_start_date`, `requested_end_date`, `first_timestamp` y
-`last_timestamp`. Use un identificador de experimento nuevo al cambiar de
-modalidad; un staging limitado por volumen no se acepta como rango completo.
-
-Para una prueba pequeña local o dentro de un nodo de cómputo:
+Una prueba local pequeña o ejecutada dentro de un nodo de cómputo puede utilizar:
 
 ```bash
 python -m renewable_atlas aws-run \
@@ -264,182 +578,208 @@ python -m renewable_atlas aws-run \
   --download
 ```
 
-Cada ejecución crea un experimento nuevo en `results/<experiment-id>` y no
-reemplaza experimentos anteriores. La estructura incluye `summary.csv` y una
-corrida por configuración bajo `workers-NNN/run-NN`, con `indicators.parquet`,
-`cluster_profiles.json` y `manifest.json`. Es exactamente el contrato que
-descubre Streamlit. Se mantienen `point_id`, coordenadas, país, indicadores,
-scores, `cluster_id`, etiquetas y descripciones.
+Cada identificador de experimento debe ser único para evitar sobrescribir un staging existente.
 
 ## Ejecución en Kabré
 
-No ejecute instalaciones, pruebas, descargas ni el pipeline en los nodos
-`login`. Desde login solamente consulte Slurm y envíe trabajos. La preparación
-del ambiente debe hacerse dentro de una asignación de cómputo, siguiendo
-[docs/KABRE.md](docs/KABRE.md).
+> No ejecute instalaciones, pruebas, descargas ni el pipeline en los nodos de login.
+
+Desde un nodo de login solamente se debe:
+
+- Actualizar el repositorio.
+- Enviar trabajos con `sbatch`.
+- Consultar trabajos con `squeue` o `sacct`.
+- Revisar logs y archivos terminados.
+
+El trabajo computacional debe ejecutarse en un nodo asignado por Slurm.
+
+### Preparar el ambiente
+
+La creación o actualización del ambiente debe hacerse dentro de una asignación de cómputo:
+
+```bash
+module purge
+module load mamba/python-3.12.11
+source .venv-kabre/bin/activate
+python -m pip check
+```
+
+Consulte [docs/KABRE.md](docs/KABRE.md) para la guía completa.
 
 ### Smoke test
 
+Desde login, envíe el trabajo:
+
 ```bash
-EXPERIMENT_ID=smoke-kabre POINTS=8 REPEATS=1 WORKERS=1,2 \
-  sbatch --partition=kura-debug --time=00:15:00 hpc/kabre_benchmark.slurm
+EXPERIMENT_ID=smoke-kabre \
+POINTS=8 \
+REPEATS=1 \
+WORKERS=1,2 \
+sbatch \
+  --partition=kura-debug \
+  --time=00:15:00 \
+  hpc/kabre_benchmark.slurm
 ```
 
-### Experimento reproducible de escalabilidad
+### Benchmark determinista
 
 ```bash
-EXPERIMENT_ID=kabre-carga-300 POINTS=300 REPEATS=3 \
-  sbatch hpc/kabre_benchmark.slurm
+EXPERIMENT_ID=kabre-carga-300 \
+POINTS=300 \
+REPEATS=3 \
+WORKERS=1,2,4,8 \
+SOURCE=fake \
+sbatch \
+  --partition=kura \
+  --time=04:00:00 \
+  --mem=16G \
+  hpc/kabre_benchmark.slurm
 ```
 
-### Dataset AWS de aproximadamente 5 GiB
+### Ruta masiva AWS
 
-La descarga y el procesamiento deben enviarse a Slurm; no ejecute este comando
-directamente en `login`:
-
-```bash
-mkdir -p outputs/slurm
-EXPERIMENT_ID=nasa-aws-5gb-v1 POINTS=300 TARGET_GIB=5 \
-  sbatch hpc/kabre_aws_5gb.slurm
-```
-
-El script usa `/data/$USER/renewable-atlas/aws-staging` para no llenar el home.
-Por defecto procesa el mismo staging con 1, 2, 4 y 8 workers. El dashboard
-encontrará `results/nasa-aws-5gb-v1`; cada configuración queda separada y
-`summary.csv` contiene tiempo, memoria, speedup y eficiencia.
-
-Para comprobar al menos 1 GiB **físico** con los datos horarios más recientes
-comunes a `syn1deg` y MERRA-2 (hasta 2026-05-30), ejecute:
+La adquisición y procesamiento se envían mediante:
 
 ```bash
-EXPERIMENT_ID=aws-real-1gib-v1 POINTS=300 TARGET_GIB=1 SIZE_BASIS=disk \
-START_DATE=2016-01-01 END_DATE=2026-05-30 WORKERS=1,2,4,8 REPEATS=1 \
-MAIN_BASELINE=true \
-  sbatch --partition=kura --time=1-00:00:00 --mem=32G \
+sbatch \
+  --partition=kura \
+  --time=1-00:00:00 \
+  --mem=32G \
   hpc/kabre_aws_5gb.slurm
 ```
 
-La corrida se detiene al superar 1 GiB en disco y solo continúa al benchmark
-si el manifiesto de staging tiene `status: success`. Streamlit muestra el
-tamaño real, tamaño lógico, filas horarias y cantidad de variables.
+La configuración específica del experimento debe definirse mediante las variables aceptadas por el script. Use un identificador nuevo para una nueva descarga.
 
-Para procesar 300 puntos durante todo el periodo solicitado, sin detenerse al
-alcanzar un volumen, use la modalidad por fechas:
+La modalidad limitada por `TARGET_GIB` se conserva para pruebas exploratorias. El experimento final utilizó el modo `full-date-range` y no terminó por tamaño.
 
-```bash
-EXPERIMENT_ID=aws-geographic-300-full-range-v1 POINTS=300 \
-START_DATE=2001-01-01 END_DATE=2026-08-14 FULL_DATE_RANGE=true \
-WORKERS=1,2,4,8 REPEATS=3 \
-  sbatch --partition=kura-debug --time=07:00:00 \
-  hpc/kabre_aws_5gb.slurm
-```
+## Verificación en Kabré
 
-La fecha final debe ajustarse al día de la prueba. Si NASA todavía no ofrece
-datos para todo el intervalo, el staging conserva lo disponible y el
-manifiesto permite comparar `requested_end_date` con `last_timestamp`. El modo
-por fechas puede reutilizarse con `DOWNLOAD=false` únicamente si las fechas
-solicitadas coinciden con las registradas originalmente.
-
-Para comparar el comportamiento equivalente a `main` contra la ruta nueva sin
-mezclar fuentes, use `MAIN_BASELINE=true`. La configuración de un worker leerá
-el mismo staging AWS secuencialmente con pandas; 2, 4 y 8 workers usarán Dask.
-`summary.csv` identifica cada fila como `main-sequential` o `aws-dask`:
-
-```bash
-EXPERIMENT_ID=aws-main-vs-dask POINTS=300 TARGET_GIB=0.1 \
-WORKERS=1,2,4,8 REPEATS=3 MAIN_BASELINE=true \
-  sbatch hpc/kabre_aws_5gb.slurm
-```
-
-Esta es una comparación de motores sobre una entrada AWS idéntica; no afirma
-que el commit `main` tenga integración AWS nativa.
-
-Para reutilizar un staging validado sin volver a descargarlo, establezca
-`DOWNLOAD=false` y conserve el mismo `EXPERIMENT_ID`. Puede dirigir la nueva
-comparación a otra raíz con `RESULTS_DIR`.
-
-La entrada sintética determinista permite medir cómputo sin confundirlo con la
-latencia o disponibilidad de NASA. Para verificar la integración real por
-separado:
-
-```bash
-EXPERIMENT_ID=kabre-nasa-20 POINTS=20 REPEATS=1 SOURCE=nasa \
-  sbatch hpc/kabre_benchmark.slurm
-```
-
-### Verificación
+### Consultar estado
 
 ```bash
 squeue -u "$USER"
-sacct -j <job-id> --format=JobID,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
-cat results/kabre-carga-300/summary.csv
-python hpc/compare_worker_consistency.py results/kabre-carga-300
 ```
 
-Una corrida válida debe mostrar `COMPLETED`, `ExitCode=0:0`, manifiestos con
-`status=success`, el mismo checksum y resultados consistentes entre workers.
+### Consultar una ejecución terminada
 
-## Métricas de rendimiento
+```bash
+sacct -j <job-id> \
+  --format=JobID,JobName,Partition,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
+```
 
-`summary.csv` registra cada configuración y repetición:
+### Revisar resultados
 
-- Tiempo de ejecución.
-- Memoria RSS pico del coordinador y, cuando el sistema lo permite, sus hijos.
-- Baseline promedio de las repeticiones con un worker.
-- `speedup = promedio(T1) / Tp`.
-- `eficiencia = speedup / p × 100`.
+```bash
+cat results/<experimento>/summary.csv
+```
 
-La memoria de `manifest.json` indica `memory_scope=process_tree` o
-`coordinator_only`; `sacct MaxRSS` funciona como comprobación independiente.
+### Comparar consistencia
 
-### Resultados finales
+```bash
+python hpc/compare_worker_consistency.py \
+  results/<experimento>
+```
 
-Las cifras de esta sección deben copiarse exclusivamente del experimento final
-de Kabré. No deben sustituirse por estimaciones ni por un smoke test local.
+Para el experimento final:
 
-| Workers | Tiempo promedio (s) | Speedup | Eficiencia (%) | Memoria pico |
-|---:|---:|---:|---:|---:|
-| 1 | Pendiente de corrida final | 1.00 | 100.0 | Pendiente |
-| 2 | Pendiente de corrida final | Pendiente | Pendiente | Pendiente |
-| 4 | Pendiente de corrida final | Pendiente | Pendiente | Pendiente |
-| 8 | Pendiente de corrida final | Pendiente | Pendiente | Pendiente |
+```bash
+sacct -j 600690 \
+  --format=JobID,JobName,Partition,State,Elapsed,MaxRSS,AllocCPUS,ExitCode
 
-## Contratos para el dashboard
+cat results/aws-geographic-300-full-range-v1/summary.csv
 
-El dashboard de Streamlit consume las salidas reproducibles de cada experimento:
+python hpc/compare_worker_consistency.py \
+  results/aws-geographic-300-full-range-v1
+```
 
-- `summary.csv`: workers, repetición, tiempo, memoria, baseline, speedup y eficiencia.
-- `workers-NNN/run-NN/indicators.parquet`: coordenadas, país, indicadores y `cluster_id`.
-- `workers-NNN/run-NN/cluster_profiles.json`: perfiles interpretados.
-- `workers-NNN/run-NN/manifest.json`: fuente, configuración, calidad y trazabilidad.
+Una corrida válida debe mostrar:
 
-Los contratos públicos permanecen:
+- Slurm: `COMPLETED`.
+- Exit code: `0:0`.
+- Manifiestos: `status: success`.
+- Archivos generados para cada corrida.
+- Resultados consistentes entre workers.
 
-- `process() -> indicators_df`
-- `run() -> (indicators_df, labels, profiles)`
+## Configuración
 
-La interfaz está implementada con Streamlit y Plotly. Consulte la guía de
-[ejecución, interpretación y validación del dashboard](docs/DASHBOARD.md).
+Las variables disponibles están documentadas en `.env.example`.
 
-## Estructura
+Ejemplo para el flujo Point API:
+
+```dotenv
+DATE_RANGE_START_YEAR=2000
+DATE_RANGE_END_YEAR=2023
+
+GRID_SIZE=300
+GRID_ENABLE_SAMPLING=true
+GRID_SAMPLE_SIZE=300
+
+CLUSTERING_AUTO_SELECT=true
+CLUSTERING_MIN_CLUSTERS=2
+CLUSTERING_MAX_CLUSTERS=10
+CLUSTERING_N_CLUSTERS=5
+CLUSTERING_RANDOM_STATE=42
+
+BENCHMARK_WORKER_COUNTS=1,2,4,8
+BENCHMARK_REPEATS_PER_CONFIG=3
+
+EXECUTION_SOURCE=nasa
+EXECUTION_RANDOM_SEED=42
+```
+
+No incluya contraseñas, tokens o secretos dentro de `.env.example`.
+
+## Reproducibilidad
+
+La solución utiliza:
+
+- GitHub para control de versiones.
+- Ramas para trabajo independiente.
+- Pull requests para revisión.
+- Commits descriptivos.
+- `requirements-kabre.txt` para dependencias en Kabré.
+- `.env.example` para configuración sin secretos.
+- Scripts Slurm para recursos computacionales.
+- Semilla fija para K-Means.
+- Manifiestos por corrida.
+- Resultados separados por workers y repetición.
+- Tres repeticiones por configuración.
+- El mismo conjunto Parquet para todas las comparaciones.
+
+Para comparar dos experimentos deben coincidir:
+
+| Elemento | Evidencia |
+|---|---|
+| Código | Commit registrado en `manifest.json` |
+| Entrada | Puntos, periodo y variables |
+| Ambiente | Python y dependencias |
+| Recursos | Workers, scheduler, CPUs y memoria |
+| Algoritmo | Semilla y rango de K |
+| Repeticiones | Misma cantidad por configuración |
+
+## Estructura del proyecto
 
 ```text
 API_ParallelCompt/
+├── dashboard/              # aplicación Streamlit
 ├── src/renewable_atlas/
-│   ├── application/       # pipeline y servicios
-│   ├── composition/       # ensamblaje de dependencias
-│   ├── config/            # variables de entorno
-│   ├── domain/            # modelos e interfaces
-│   └── infrastructure/    # NASA, Dask, K-Means, persistencia y reportes
-├── hpc/                   # scripts Slurm y validación entre workers
-├── docs/KABRE.md          # guía operativa de Kabré
-├── tests/                 # pruebas unitarias e integración
-├── requirements-kabre.txt # dependencias fijadas para Kabré
-├── .env.example           # configuración sin credenciales
-└── pyproject.toml         # paquete y herramientas de calidad
+│   ├── application/        # pipeline y servicios
+│   ├── composition/        # ensamblaje de dependencias
+│   ├── config/             # configuración
+│   ├── domain/             # modelos e interfaces
+│   └── infrastructure/     # NASA, AWS, Dask, K-Means y persistencia
+├── hpc/                    # scripts Slurm y validación
+├── docs/
+│   ├── KABRE.md            # guía operativa de Kabré
+│   └── DASHBOARD.md        # guía del dashboard
+├── tests/                  # pruebas automatizadas
+├── requirements-kabre.txt  # dependencias de Kabré
+├── .env.example            # configuración sin secretos
+├── main.py                 # punto de entrada
+└── pyproject.toml          # paquete y herramientas
 ```
 
-## Calidad, seguridad y contribución
+## Calidad y seguridad
 
 Antes de crear un pull request:
 
@@ -449,21 +789,46 @@ pytest
 git diff --check
 ```
 
-- No suba tokens, contraseñas, `.env`, ambientes virtuales ni resultados
-  masivos.
-- Trabaje en una rama y use commits pequeños y descriptivos.
-- Mantenga `requirements-kabre.txt` sincronizado con dependencias de runtime.
-- Documente commit, configuración, job ID y ruta del experimento final.
-- Revise que los contratos del dashboard no hayan cambiado.
+Buenas prácticas aplicadas:
+
+- Código modular por capas.
+- Interfaces para desacoplar servicios.
+- Dependencias definidas.
+- Pruebas unitarias y de integración.
+- Análisis estático con Ruff.
+- Variables de entorno.
+- Ausencia de credenciales en el repositorio.
+- Identificadores de experimento validados.
+- Resultados masivos fuera de Git.
+- Ejecución intensiva únicamente mediante Slurm.
+
+No suba:
+
+- Contraseñas.
+- Tokens.
+- Archivos `.env`.
+- Ambientes virtuales.
+- Datos masivos.
+- Resultados temporales innecesarios.
 
 ## Limitaciones
 
-- La resolución espacial y los valores provienen de NASA POWER, no de sensores
-  instalados en cada punto.
-- `ws_100m` es una estimación, no una observación directa.
-- La ruta Point API descarga secuencialmente. La ruta AWS lee por bloques
-  mensuales y procesa el staging con Dask.
-- El atlas identifica potencial climático y no sustituye estudios técnicos,
-  ambientales, económicos o de conexión eléctrica.
-- Los resultados definitivos de escalabilidad deben ejecutarse y documentarse
-  en Kabré.
+- Los valores climáticos provienen de NASA POWER y no de sensores instalados en cada punto.
+- `WS100M` es una estimación.
+- Los indicadores son relativos al conjunto procesado.
+- Silhouette quedó por debajo del objetivo exploratorio de 0.5.
+- El experimento utilizó una semilla fija y no evaluó estabilidad con múltiples semillas.
+- La aceleración fue sublineal.
+- El consumo de memoria aumentó con los workers.
+- El análisis no incluye terreno, red eléctrica, restricciones ambientales ni costos.
+- El atlas no sustituye un estudio definitivo de factibilidad.
+
+## Trabajo futuro
+
+- Evaluar múltiples semillas de K-Means.
+- Comparar otros algoritmos de clustering.
+- Ejecutar el pipeline en más de un nodo.
+- Explorar otras configuraciones del scheduler de Dask.
+- Incorporar variables de infraestructura y restricciones territoriales.
+- Añadir análisis estacionales y series temporales.
+- Exportar ubicaciones prioritarias desde el dashboard.
